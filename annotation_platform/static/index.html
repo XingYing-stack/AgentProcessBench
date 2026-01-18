@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgentProcessBench Annotation</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div id="loginOverlay" class="overlay" data-open="false">
+      <div class="modal">
+        <div class="modalTitle">开始标注</div>
+        <div class="modalText muted small">请输入用户名（会写入导出 JSONL，用于区分标注人员）。每次进入都会要求确认一次。</div>
+        <div class="modalRow">
+          <input id="loginName" placeholder="例如: alice" />
+          <button id="loginStartBtn" class="btn btnPrimary">Start</button>
+        </div>
+        <label class="modalText muted small">
+          <input id="rememberAnnotator" type="checkbox" />
+          记住用户名（下次自动填充，但仍需点 Start 确认）
+        </label>
+        <div class="modalText muted small mono">快捷键：j/k 或 ↑/↓ 切步；1/0/- 打分；Save & Next 保存并下一条</div>
+      </div>
+    </div>
+
+    <header class="topbar">
+      <div class="row">
+        <div class="brand">AgentProcessBench 标注</div>
+        <div class="spacer"></div>
+        <div class="field">
+          <label>Dataset</label>
+          <select id="datasetSelect"></select>
+        </div>
+        <div class="field">
+          <label>Annotator</label>
+          <input id="annotatorInput" placeholder="例如: alice" />
+        </div>
+        <div class="field">
+          <label>进度</label>
+          <div id="progressText" class="mono">-</div>
+        </div>
+      </div>
+      <div class="row row2">
+        <div class="field">
+          <label>跳转 Index</label>
+          <input id="jumpIndex" class="mono" placeholder="0" />
+          <button id="jumpBtn" class="btn">Go</button>
+        </div>
+        <div class="spacer"></div>
+        <button id="skipBtn" class="btn btnWarn">Skip</button>
+        <button id="saveBtn" class="btn">Save</button>
+        <button id="saveNextBtn" class="btn btnPrimary">Save & Next</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel left">
+        <div class="card">
+          <div class="cardTitle">样本</div>
+          <div id="sampleMeta" class="mono small"></div>
+        </div>
+        <div class="card">
+          <div class="cardTitle">问题 / 任务</div>
+          <div id="question" class="pre"></div>
+          <div id="taskDescription" class="pre muted"></div>
+        </div>
+        <div class="card">
+          <div class="cardTitle">最终结果标注</div>
+          <div class="labelRow">
+            <button class="pill" data-final="1">+ 正确</button>
+            <button class="pill" data-final="0">0 不确定</button>
+            <button class="pill" data-final="-1">- 错误</button>
+          </div>
+          <div id="rewardHint" class="small muted"></div>
+        </div>
+        <div class="card">
+          <div class="cardTitle">备注</div>
+          <textarea id="comment" rows="6" placeholder="可选：为何正确/错误，或标注注意事项"></textarea>
+        </div>
+        <details class="card">
+          <summary class="cardTitle">Ground Truth / Reward Info</summary>
+          <pre id="groundTruth" class="pre"></pre>
+          <pre id="rewardInfo" class="pre"></pre>
+        </details>
+      </section>
+
+      <section class="panel right">
+        <div class="card">
+          <div class="cardTitle">Messages（逐步标注 assistant）</div>
+          <div id="stepsNav" class="stepsNav"></div>
+          <div id="messages"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,773 @@
+function $(id) {
+  return document.getElementById(id);
+}
+
+const state = {
+  datasets: [],
+  dataset: null,
+  annotator: "",
+  rememberAnnotator: false,
+  item: null,
+  stepLabels: {},
+  finalLabel: null,
+  finalLabelTouched: false,
+  comment: "",
+  focusedAssistantIdx: null,
+};
+
+function _readRememberAnnotator() {
+  return localStorage.getItem("apb_remember_annotator") === "true";
+}
+
+function _setRememberAnnotator(v) {
+  state.rememberAnnotator = Boolean(v);
+  localStorage.setItem("apb_remember_annotator", state.rememberAnnotator ? "true" : "false");
+  const cb = $("rememberAnnotator");
+  if (cb) cb.checked = state.rememberAnnotator;
+}
+
+function isValidLabel(v) {
+  return v === 1 || v === 0 || v === -1;
+}
+
+function showLogin() {
+  $("loginOverlay").dataset.open = "true";
+  const saved = localStorage.getItem("apb_annotator") || "";
+  _setRememberAnnotator(_readRememberAnnotator());
+  $("loginName").value = (state.rememberAnnotator ? saved : "") || "";
+  setTimeout(() => $("loginName").focus(), 0);
+}
+
+function hideLogin() {
+  $("loginOverlay").dataset.open = "false";
+}
+
+function setStatus(text) {
+  $("progressText").textContent = text;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function stringify(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function _maybePrettyJsonString(s) {
+  const t = String(s).trim();
+  if (t.length < 2) return null;
+  const looksJson =
+    (t.startsWith("{") && t.endsWith("}")) ||
+    (t.startsWith("[") && t.endsWith("]"));
+  if (!looksJson) return null;
+  if (t.length > 200_000) return null;
+  try {
+    return JSON.stringify(JSON.parse(t), null, 2);
+  } catch {
+    return null;
+  }
+}
+
+function _decodeEscapesOnce(s) {
+  const raw = String(s);
+  let out = "";
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch !== "\\") {
+      out += ch;
+      continue;
+    }
+    const next = raw[i + 1];
+    if (next === undefined) {
+      out += "\\";
+      continue;
+    }
+    if (next === "n") {
+      out += "\n";
+      i++;
+      continue;
+    }
+    if (next === "r") {
+      out += "\n";
+      i++;
+      continue;
+    }
+    if (next === "t") {
+      out += "\t";
+      i++;
+      continue;
+    }
+    if (next === "\\") {
+      out += "\\";
+      i++;
+      continue;
+    }
+    if (next === '"') {
+      out += '"';
+      i++;
+      continue;
+    }
+    if (next === "'") {
+      out += "'";
+      i++;
+      continue;
+    }
+    if (next === "u") {
+      const hex = raw.slice(i + 2, i + 6);
+      if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+        out += String.fromCharCode(parseInt(hex, 16));
+        i += 5;
+        continue;
+      }
+    }
+    if (next === "x") {
+      const hex = raw.slice(i + 2, i + 4);
+      if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+        out += String.fromCharCode(parseInt(hex, 16));
+        i += 3;
+        continue;
+      }
+    }
+    out += "\\";
+  }
+  return out;
+}
+
+function polishEscapedText(s) {
+  const raw = String(s);
+  if (raw.length > 200_000) return raw;
+  if (!raw.includes("\\")) return raw;
+
+  let cur = raw;
+  for (let pass = 0; pass < 2; pass++) {
+    const next = _decodeEscapesOnce(cur);
+    if (next === cur) break;
+    cur = next;
+  }
+  return cur.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+}
+
+function unescapeJsonStringLiterals(jsonText) {
+  const raw = String(jsonText);
+  if (raw.length > 200_000) return raw;
+  let out = "";
+  let inString = false;
+  let escaping = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (!inString) {
+      out += ch;
+      if (ch === '"') inString = true;
+      continue;
+    }
+    if (escaping) {
+      escaping = false;
+      if (ch === "n") out += "\n";
+      else if (ch === "r") out += "\n";
+      else if (ch === "t") out += "\t";
+      else if (ch === '"') out += '"';
+      else if (ch === "\\") out += "\\";
+      else if (ch === "/") out += "/";
+      else if (ch === "u") {
+        const hex = raw.slice(i + 1, i + 5);
+        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+          out += String.fromCharCode(parseInt(hex, 16));
+          i += 4;
+        } else {
+          out += "u";
+        }
+      } else {
+        out += ch;
+      }
+      continue;
+    }
+    if (ch === "\\") {
+      escaping = true;
+      continue;
+    }
+    out += ch;
+    if (ch === '"') inString = false;
+  }
+  return out.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+}
+
+function stringifyToolContent(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    const pretty = _maybePrettyJsonString(value);
+    if (pretty !== null) return unescapeJsonStringLiterals(pretty);
+    return polishEscapedText(value);
+  }
+  try {
+    return unescapeJsonStringLiterals(JSON.stringify(value, null, 2));
+  } catch {
+    return String(value);
+  }
+}
+
+function renderJsonWithHighlights(value, highlightClassForKey) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return escapeHtml(value);
+
+  const renderValue = (v, indent) => {
+    if (v === null) return "null";
+    if (v === undefined) return "null";
+    if (typeof v === "string") return escapeHtml(JSON.stringify(v));
+    if (typeof v === "number" || typeof v === "boolean") return escapeHtml(String(v));
+    if (Array.isArray(v)) {
+      if (v.length === 0) return "[]";
+      const nextIndent = indent + 2;
+      const parts = ["["];
+      v.forEach((item, idx) => {
+        const comma = idx === v.length - 1 ? "" : ",";
+        parts.push(`\n${" ".repeat(nextIndent)}${renderValue(item, nextIndent)}${comma}`);
+      });
+      parts.push(`\n${" ".repeat(indent)}]`);
+      return parts.join("");
+    }
+    if (typeof v === "object") {
+      const obj = v;
+      const keys = Object.keys(obj);
+      if (keys.length === 0) return "{}";
+      const nextIndent = indent + 2;
+      const parts = ["{"];
+      keys.forEach((key, idx) => {
+        const comma = idx === keys.length - 1 ? "" : ",";
+        const keyHtml = escapeHtml(JSON.stringify(key));
+        const valueHtml = renderValue(obj[key], nextIndent);
+        const cls = highlightClassForKey ? highlightClassForKey(key, obj[key]) : null;
+        const wrapped = cls ? `<span class="${cls}">${valueHtml}</span>` : valueHtml;
+        parts.push(`\n${" ".repeat(nextIndent)}${keyHtml}: ${wrapped}${comma}`);
+      });
+      parts.push(`\n${" ".repeat(indent)}}`);
+      return parts.join("");
+    }
+    try {
+      return escapeHtml(JSON.stringify(v));
+    } catch {
+      return escapeHtml(String(v));
+    }
+  };
+
+  return renderValue(value, 0);
+}
+
+function renderGroundTruthHtml(groundTruth) {
+  const hlKeys = new Set(["answer", "answer_text", "possible_answer", "target"]);
+  return renderJsonWithHighlights(groundTruth, (key) => (hlKeys.has(key) ? "hlGreen" : null));
+}
+
+function renderRewardInfoHtml(rewardInfo) {
+  const hlKeys = new Set(["answer", "answer_text", "possible_answer", "target"]);
+  return renderJsonWithHighlights(rewardInfo, (key, v) => {
+    if (key === "reward" && typeof v === "number") return v > 0 ? "hlGreen" : v < 0 ? "hlRed" : "hlAmber";
+    return hlKeys.has(key) ? "hlGreen" : null;
+  });
+}
+
+async function apiGet(path) {
+  const res = await fetch(path, { method: "GET" });
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
+
+async function apiPost(path, payload) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
+
+function renderFinalPills() {
+  document.querySelectorAll("[data-final]").forEach((btn) => {
+    const v = parseInt(btn.getAttribute("data-final"), 10);
+    btn.dataset.active = v === state.finalLabel ? "true" : "false";
+  });
+}
+
+function previewText(value, limit = 160) {
+  const t = stringify(value).replaceAll(/\s+/g, " ").trim();
+  if (t.length <= limit) return t;
+  return t.slice(0, limit - 1) + "…";
+}
+
+function renderMessages() {
+  const root = $("messages");
+  root.innerHTML = "";
+  if (!state.item) return;
+
+  const assistantSet = new Set(state.item.assistant_message_indices || []);
+  const messages = state.item.messages || [];
+  const finalAssistantIdx = state.item.final_assistant_message_index;
+  const focused = state.focusedAssistantIdx;
+
+  messages.forEach((msg, idx) => {
+    const role = msg.role || "unknown";
+    const wrap = document.createElement("div");
+    wrap.className = "msg";
+    wrap.id = `msg-${idx}`;
+    if (focused === idx) wrap.dataset.focused = "true";
+
+    let label = assistantSet.has(idx) ? (state.stepLabels[String(idx)] ?? null) : null;
+    if (
+      state.finalLabelTouched &&
+      isValidLabel(state.finalLabel) &&
+      (label === null || label === undefined) &&
+      role === "assistant" &&
+      idx === finalAssistantIdx
+    ) {
+      label = state.finalLabel;
+    }
+    if (label !== null && label !== undefined) wrap.dataset.label = String(label);
+
+    const header = document.createElement("div");
+    header.className = "msgHeader";
+
+    const badge = document.createElement("div");
+    badge.className = `badge role-${role}`;
+    badge.textContent = `${idx} · ${role}`;
+    header.appendChild(badge);
+
+    if (role === "assistant" && idx === finalAssistantIdx) {
+      const fin = document.createElement("div");
+      fin.className = "badge";
+      fin.textContent = "final";
+      header.appendChild(fin);
+    }
+
+    if (role === "tool") {
+      const name = document.createElement("div");
+      name.className = "badge";
+      name.textContent = msg.name ? `tool: ${msg.name}` : "tool";
+      header.appendChild(name);
+    }
+
+    if (assistantSet.has(idx)) {
+      const controls = document.createElement("div");
+      controls.className = "stepControls";
+      controls.appendChild(makeStepBtn(idx, 1, "+", state.stepLabels[String(idx)] === 1));
+      controls.appendChild(makeStepBtn(idx, 0, "0", state.stepLabels[String(idx)] === 0));
+      controls.appendChild(makeStepBtn(idx, -1, "-", state.stepLabels[String(idx)] === -1));
+      header.appendChild(controls);
+    }
+
+    const body = document.createElement("div");
+    body.className = "msgBody";
+
+    if (role === "tool" || role === "system") {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.className = "mono small muted";
+      summary.textContent = previewText(msg.content);
+      const pre = document.createElement("pre");
+      pre.className = "pre";
+      pre.textContent = stringifyToolContent(msg.content);
+      details.appendChild(summary);
+      details.appendChild(pre);
+      body.appendChild(details);
+    } else {
+      const pre = document.createElement("pre");
+      pre.className = "pre";
+      pre.textContent = stringify(msg.content);
+      body.appendChild(pre);
+    }
+
+    if (msg.tool_calls) {
+      const toolBox = document.createElement("div");
+      toolBox.className = "toolsBox";
+      const title = document.createElement("div");
+      title.innerHTML = `<span class="k">tool_calls</span>`;
+      toolBox.appendChild(title);
+      const tpre = document.createElement("pre");
+      tpre.className = "pre";
+      tpre.textContent = stringify(msg.tool_calls);
+      toolBox.appendChild(tpre);
+      body.appendChild(toolBox);
+    }
+
+    wrap.appendChild(header);
+    wrap.appendChild(body);
+    if (assistantSet.has(idx)) {
+      wrap.addEventListener("click", () => {
+        state.focusedAssistantIdx = idx;
+        renderStepsNav();
+        renderMessages();
+      });
+    }
+    root.appendChild(wrap);
+  });
+}
+
+function makeStepBtn(idx, v, text, active) {
+  const b = document.createElement("button");
+  b.textContent = text;
+  b.dataset.v = String(v);
+  b.dataset.active = active ? "true" : "false";
+  b.onclick = () => {
+    const k = String(idx);
+    if (state.stepLabels[k] === v) {
+      delete state.stepLabels[k];
+    } else {
+      state.stepLabels[k] = v;
+    }
+    state.focusedAssistantIdx = idx;
+    renderStepsNav();
+    renderMessages();
+  };
+  return b;
+}
+
+function renderStepsNav() {
+  const root = $("stepsNav");
+  root.innerHTML = "";
+  if (!state.item) return;
+  const indices = state.item.assistant_message_indices || [];
+  indices.forEach((idx) => {
+    const chip = document.createElement("button");
+    chip.className = "stepChip";
+    chip.textContent = `a@${idx}`;
+    const label = state.stepLabels[String(idx)];
+    if (label === 1 || label === 0 || label === -1) chip.dataset.label = String(label);
+    if (state.focusedAssistantIdx === idx) chip.dataset.focused = "true";
+    chip.addEventListener("click", () => {
+      state.focusedAssistantIdx = idx;
+      renderStepsNav();
+      renderMessages();
+      const el = document.getElementById(`msg-${idx}`);
+      if (el) el.scrollIntoView({ block: "center" });
+    });
+    root.appendChild(chip);
+  });
+}
+
+function setItem(payload) {
+  state.item = payload;
+  state.stepLabels = (payload.existing_annotation && payload.existing_annotation.step_labels) || {};
+  if (payload.existing_annotation) {
+    const touched = payload.existing_annotation.final_label_touched ?? true;
+    state.finalLabelTouched = Boolean(touched);
+    state.finalLabel = state.finalLabelTouched ? payload.existing_annotation.final_label ?? 0 : null;
+  } else {
+    state.finalLabelTouched = false;
+    state.finalLabel = null;
+  }
+  state.comment = (payload.existing_annotation && payload.existing_annotation.comment) || "";
+  state.focusedAssistantIdx = (payload.assistant_message_indices && payload.assistant_message_indices[0]) || null;
+
+  $("sampleMeta").textContent = stringify({
+    dataset: payload.dataset,
+    index_in_dataset: payload.index_in_dataset,
+    record_id: payload.record_id,
+    data_source: payload.data_source,
+    query_index: payload.query_index,
+    sample_index: payload.sample_index,
+  });
+  $("question").textContent = stringify(payload.question || "");
+  $("taskDescription").textContent = stringify(payload.task_description || "");
+  $("groundTruth").innerHTML = renderGroundTruthHtml(payload.ground_truth || "");
+  $("rewardInfo").innerHTML = renderRewardInfoHtml(payload.reward_info || "");
+  $("comment").value = state.comment;
+
+  const rh = payload.reward_info && payload.reward_info.reward !== undefined ? payload.reward_info.reward : null;
+  if (rh === null) {
+    $("rewardHint").textContent = "";
+    $("rewardHint").style.color = "";
+  } else {
+    $("rewardHint").textContent = `模型/规则 reward_hint: ${String(rh)}（仅供参考）`;
+    if (typeof rh === "number") {
+      $("rewardHint").style.color = rh > 0 ? "var(--green)" : rh < 0 ? "var(--red)" : "var(--amber)";
+    } else {
+      $("rewardHint").style.color = "var(--muted)";
+    }
+  }
+
+  renderFinalPills();
+  renderStepsNav();
+  renderMessages();
+  $("jumpIndex").value = String(payload.index_in_dataset ?? "");
+}
+
+async function refreshProgress() {
+  if (!state.dataset || !state.annotator) {
+    setStatus("-");
+    return;
+  }
+  const p = await apiGet(`/api/progress?dataset=${encodeURIComponent(state.dataset)}&annotator=${encodeURIComponent(state.annotator)}`);
+  setStatus(`${p.done} done, ${p.skipped} skipped / ${p.total}`);
+}
+
+async function loadDatasets() {
+  const data = await apiGet("/api/datasets");
+  state.datasets = data.datasets || [];
+
+  const sel = $("datasetSelect");
+  sel.innerHTML = "";
+  state.datasets.forEach((d) => {
+    const opt = document.createElement("option");
+    opt.value = d.name;
+    opt.textContent = `${d.name} (${d.size})`;
+    sel.appendChild(opt);
+  });
+
+  const saved = localStorage.getItem("apb_dataset");
+  if (saved && state.datasets.some((d) => d.name === saved)) {
+    sel.value = saved;
+  }
+  state.dataset = sel.value;
+}
+
+async function loadNext() {
+  if (!state.dataset) return;
+  if (!state.annotator) {
+    showLogin();
+    return;
+  }
+  const payload = await apiGet(
+    `/api/next?dataset=${encodeURIComponent(state.dataset)}&annotator=${encodeURIComponent(state.annotator)}`
+  );
+  if (payload.done) {
+    alert("该 dataset 已标注完成（或无可用样本）。");
+    return;
+  }
+  setItem(payload);
+  await refreshProgress();
+}
+
+async function loadByIndex(index) {
+  if (!state.dataset) return;
+  const payload = await apiGet(
+    `/api/item?dataset=${encodeURIComponent(state.dataset)}&index=${encodeURIComponent(String(index))}&annotator=${encodeURIComponent(
+      state.annotator || ""
+    )}`
+  );
+  setItem(payload);
+  await refreshProgress();
+}
+
+function collectPayload(status) {
+  const comment = $("comment").value || "";
+  return {
+    dataset: state.dataset,
+    record_id: state.item.record_id,
+    annotator: state.annotator,
+    username: state.annotator,
+    index_in_dataset: state.item.index_in_dataset,
+    data_source: state.item.data_source,
+    query_index: state.item.query_index,
+    sample_index: state.item.sample_index,
+    step_labels: state.stepLabels,
+    final_label: isValidLabel(state.finalLabel) ? state.finalLabel : 0,
+    final_label_touched: state.finalLabelTouched,
+    status,
+    comment,
+  };
+}
+
+function validateDoneOrAlert() {
+  if (!state.item) return false;
+  const indices = state.item.assistant_message_indices || [];
+  const missing = indices.filter((idx) => !isValidLabel(state.stepLabels[String(idx)]));
+  if (missing.length > 0) {
+    const head = missing.slice(0, 12).map((x) => `a@${x}`).join(", ");
+    const more = missing.length > 12 ? ` …(+${missing.length - 12})` : "";
+    alert(`还有 assistant 步未标注：${head}${more}`);
+    const first = missing[0];
+    state.focusedAssistantIdx = first;
+    renderStepsNav();
+    renderMessages();
+    const el = document.getElementById(`msg-${first}`);
+    if (el) el.scrollIntoView({ block: "center" });
+    return false;
+  }
+  if (!state.finalLabelTouched || !isValidLabel(state.finalLabel)) {
+    alert("请先完成“最终结果标注”（+ / 0 / -）再保存。");
+    return false;
+  }
+  return true;
+}
+
+async function save(status) {
+  if (!state.item) {
+    alert("未加载样本");
+    return false;
+  }
+  if (status !== "skipped" && !validateDoneOrAlert()) return false;
+  await apiPost("/api/annotation", collectPayload(status));
+  await refreshProgress();
+  return true;
+}
+
+function initEvents() {
+  $("datasetSelect").addEventListener("change", async (e) => {
+    state.dataset = e.target.value;
+    localStorage.setItem("apb_dataset", state.dataset);
+    await refreshProgress();
+    await loadNext();
+  });
+
+  $("annotatorInput").addEventListener("change", async (e) => {
+    state.annotator = (e.target.value || "").trim();
+    if (state.rememberAnnotator && state.annotator) {
+      localStorage.setItem("apb_annotator", state.annotator);
+    } else {
+      localStorage.removeItem("apb_annotator");
+    }
+    await refreshProgress();
+    if (state.dataset && state.annotator) await loadNext();
+  });
+
+  $("loginStartBtn").addEventListener("click", async () => {
+    const name = ($("loginName").value || "").trim();
+    if (!name) return;
+    _setRememberAnnotator(Boolean($("rememberAnnotator")?.checked));
+    state.annotator = name;
+    $("annotatorInput").value = name;
+    if (state.rememberAnnotator) {
+      localStorage.setItem("apb_annotator", state.annotator);
+    } else {
+      localStorage.removeItem("apb_annotator");
+    }
+    hideLogin();
+    await refreshProgress();
+    await loadNext();
+  });
+
+  $("loginName").addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      $("loginStartBtn").click();
+    }
+  });
+
+  document.querySelectorAll("[data-final]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const v = parseInt(btn.getAttribute("data-final"), 10);
+      if (state.finalLabelTouched && state.finalLabel === v) {
+        state.finalLabel = null;
+        state.finalLabelTouched = false;
+      } else {
+        state.finalLabel = v;
+        state.finalLabelTouched = true;
+      }
+      renderFinalPills();
+      renderMessages();
+    });
+  });
+
+  $("saveBtn").addEventListener("click", async () => {
+    await save("in_progress");
+  });
+
+  $("saveNextBtn").addEventListener("click", async () => {
+    const ok = await save("done");
+    if (ok) await loadNext();
+  });
+
+  $("skipBtn").addEventListener("click", async () => {
+    if (!confirm("确认跳过该样本？")) return;
+    await save("skipped");
+    await loadNext();
+  });
+
+  $("jumpBtn").addEventListener("click", async () => {
+    const v = parseInt(($("jumpIndex").value || "0").trim(), 10);
+    if (Number.isNaN(v)) return;
+    await loadByIndex(v);
+  });
+
+  $("jumpIndex").addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      $("jumpBtn").click();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (!state.item) return;
+    const indices = state.item.assistant_message_indices || [];
+    if (indices.length === 0) return;
+
+    const focused = state.focusedAssistantIdx ?? indices[0];
+    const pos = indices.indexOf(focused);
+    const nextFocus = (delta) => {
+      const p = Math.max(0, Math.min(indices.length - 1, (pos >= 0 ? pos : 0) + delta));
+      state.focusedAssistantIdx = indices[p];
+      renderStepsNav();
+      renderMessages();
+      const el = document.getElementById(`msg-${state.focusedAssistantIdx}`);
+      if (el) el.scrollIntoView({ block: "center" });
+    };
+
+    if (e.key === "ArrowDown" || e.key === "j") {
+      nextFocus(1);
+      return;
+    }
+    if (e.key === "ArrowUp" || e.key === "k") {
+      nextFocus(-1);
+      return;
+    }
+    if (e.key === "1" || e.key === "+") {
+      const k = String(focused);
+      if (state.stepLabels[k] === 1) {
+        delete state.stepLabels[k];
+      } else {
+        state.stepLabels[k] = 1;
+      }
+      state.focusedAssistantIdx = focused;
+      renderStepsNav();
+      renderMessages();
+      return;
+    }
+    if (e.key === "0") {
+      const k = String(focused);
+      if (state.stepLabels[k] === 0) {
+        delete state.stepLabels[k];
+      } else {
+        state.stepLabels[k] = 0;
+      }
+      state.focusedAssistantIdx = focused;
+      renderStepsNav();
+      renderMessages();
+      return;
+    }
+    if (e.key === "-") {
+      const k = String(focused);
+      if (state.stepLabels[k] === -1) {
+        delete state.stepLabels[k];
+      } else {
+        state.stepLabels[k] = -1;
+      }
+      state.focusedAssistantIdx = focused;
+      renderStepsNav();
+      renderMessages();
+      return;
+    }
+  });
+}
+
+async function main() {
+  await loadDatasets();
+  initEvents();
+  await refreshProgress();
+  showLogin();
+}
+
+main().catch((e) => {
+  console.error(e);
+  alert(String(e));
+});
