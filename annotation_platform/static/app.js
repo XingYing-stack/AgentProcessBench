@@ -218,6 +218,67 @@ function stringifyToolContent(value) {
   }
 }
 
+async function copyToClipboard(text) {
+  const payload = String(text ?? "");
+  if (!payload) return false;
+
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(payload);
+      return true;
+    } catch {
+      // fallthrough
+    }
+  }
+
+  const ta = document.createElement("textarea");
+  ta.value = payload;
+  ta.setAttribute("readonly", "true");
+  ta.style.position = "fixed";
+  ta.style.top = "-1000px";
+  ta.style.left = "-1000px";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(ta);
+  }
+}
+
+function makeCopyButton(getText) {
+  const btn = document.createElement("button");
+  btn.className = "copyBtn";
+  btn.textContent = "Copy";
+  btn.type = "button";
+  btn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const text = typeof getText === "function" ? getText() : "";
+    const ok = await copyToClipboard(text);
+    if (!ok) return;
+    btn.dataset.copied = "true";
+    const prev = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => {
+      btn.dataset.copied = "false";
+      btn.textContent = prev || "Copy";
+    }, 700);
+  });
+  return btn;
+}
+
+function attachCornerCopyButton(host, getText) {
+  if (!host) return;
+  if (host.querySelector(":scope > .copyBtn.copyCorner")) return;
+  const btn = makeCopyButton(getText);
+  btn.classList.add("copyCorner");
+  host.appendChild(btn);
+}
+
 function renderJsonWithHighlights(value, highlightClassForKey) {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return escapeHtml(value);
@@ -390,6 +451,9 @@ function renderToolsDocs() {
     desc.textContent = previewText(toolDef.description || stringify(toolDef.raw), 220);
     sumWrap.appendChild(desc);
 
+    const copyBtn = makeCopyButton(() => stringifyToolContent(toolDef.raw));
+    sumWrap.appendChild(copyBtn);
+
     summary.appendChild(sumWrap);
     details.appendChild(summary);
 
@@ -462,14 +526,29 @@ function renderMessages() {
       header.appendChild(name);
     }
 
+    const right = document.createElement("div");
+    right.className = "msgRightControls";
+    const copyBtn = makeCopyButton(() =>
+      stringifyToolContent({
+        index: idx,
+        role,
+        name: msg.name,
+        content: msg.content,
+        tool_calls: msg.tool_calls,
+      })
+    );
+    right.appendChild(copyBtn);
+
     if (assistantSet.has(idx)) {
       const controls = document.createElement("div");
       controls.className = "stepControls";
       controls.appendChild(makeStepBtn(idx, 1, "+", state.stepLabels[String(idx)] === 1));
       controls.appendChild(makeStepBtn(idx, 0, "0", state.stepLabels[String(idx)] === 0));
       controls.appendChild(makeStepBtn(idx, -1, "-", state.stepLabels[String(idx)] === -1));
-      header.appendChild(controls);
+      right.appendChild(controls);
     }
+
+    header.appendChild(right);
 
     const body = document.createElement("div");
     body.className = "msgBody";
@@ -498,6 +577,7 @@ function renderMessages() {
       const title = document.createElement("div");
       title.innerHTML = `<span class="k">tool_calls</span>`;
       toolBox.appendChild(title);
+      attachCornerCopyButton(toolBox, () => stringifyToolContent(msg.tool_calls));
       const tpre = document.createElement("pre");
       tpre.className = "pre";
       tpre.textContent = stringify(msg.tool_calls);
@@ -874,9 +954,40 @@ function initEvents() {
   });
 }
 
+function initStaticCopyButtons() {
+  attachCornerCopyButton($("sampleMeta")?.closest(".card"), () => $("sampleMeta")?.textContent || "");
+
+  attachCornerCopyButton($("question")?.closest(".card"), () => {
+    const q = $("question")?.textContent || "";
+    const t = $("taskDescription")?.textContent || "";
+    return [q, t].filter(Boolean).join("\n\n");
+  });
+
+  attachCornerCopyButton($("toolsPanel"), () => stringifyToolContent(state.item?.tools || ""));
+
+  attachCornerCopyButton($("rewardHint")?.closest(".card"), () =>
+    stringifyToolContent({
+      final_label: state.finalLabelTouched && isValidLabel(state.finalLabel) ? state.finalLabel : null,
+      final_label_touched: Boolean(state.finalLabelTouched),
+    })
+  );
+
+  attachCornerCopyButton($("comment")?.closest(".card"), () => $("comment")?.value || "");
+
+  attachCornerCopyButton($("groundTruth")?.closest(".card"), () =>
+    stringifyToolContent({
+      ground_truth: state.item?.ground_truth,
+      reward_info: state.item?.reward_info,
+    })
+  );
+
+  attachCornerCopyButton($("messages")?.closest(".card"), () => stringifyToolContent(state.item?.messages || ""));
+}
+
 async function main() {
   await loadDatasets();
   initEvents();
+  initStaticCopyButtons();
   await refreshProgress();
   showLogin();
 }

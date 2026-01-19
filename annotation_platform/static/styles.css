@@ -178,6 +178,7 @@ textarea {
   border-radius: 14px;
   padding: 12px;
   margin-bottom: 12px;
+  position: relative;
 }
 
 .cardTitle {
@@ -292,6 +293,7 @@ textarea {
   border-radius: 14px;
   padding: 10px;
   scroll-margin-top: 110px;
+  position: relative;
 }
 
 .msgHeader {
@@ -333,9 +335,15 @@ textarea {
 }
 
 .stepControls {
-  margin-left: auto;
   display: flex;
   gap: 6px;
+}
+
+.msgRightControls {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .stepControls button {
@@ -423,6 +431,42 @@ textarea {
   border-radius: 10px;
   border: 1px dashed rgba(15, 23, 42, 0.18);
   background: rgba(248, 250, 252, 0.9);
+  position: relative;
+}
+
+.copyBtn {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--mono);
+  line-height: 1.2;
+}
+
+.copyBtn:hover {
+  border-color: #3a4a7e;
+  color: var(--text);
+}
+
+.copyBtn[data-copied="true"] {
+  border-color: rgba(22, 163, 74, 0.45);
+  background: rgba(22, 163, 74, 0.10);
+  color: #0b3d1e;
+}
+
+.copyCorner {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+}
+
+.toolsBox .copyCorner {
+  top: 6px;
+  right: 6px;
 }
 
 .toolsFilterRow {
@@ -440,6 +484,7 @@ textarea {
   border-radius: 12px;
   background: rgba(248, 250, 252, 0.9);
   padding: 10px;
+  position: relative;
 }
 
 .toolDoc summary {
