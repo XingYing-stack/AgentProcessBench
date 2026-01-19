@@ -46,6 +46,10 @@
           <input id="jumpIndex" class="mono" placeholder="0" />
           <button id="jumpBtn" class="btn">Go</button>
         </div>
+        <div class="field">
+          <label>当前 Index</label>
+          <div id="currentIndex" class="mono">-</div>
+        </div>
         <div class="spacer"></div>
         <button id="skipBtn" class="btn btnWarn">Skip</button>
         <button id="saveBtn" class="btn">Save</button>
@@ -64,6 +68,14 @@
           <div id="question" class="pre"></div>
           <div id="taskDescription" class="pre muted"></div>
         </div>
+        <details class="card" id="toolsPanel" open>
+          <summary class="cardTitle">Tools 文档</summary>
+          <div class="field toolsFilterRow">
+            <label>过滤</label>
+            <input id="toolsFilter" class="mono" placeholder="按工具名/描述筛选" />
+          </div>
+          <div id="toolsDocs" class="toolsDocs"></div>
+        </details>
         <div class="card">
           <div class="cardTitle">最终结果标注</div>
           <div class="labelRow">

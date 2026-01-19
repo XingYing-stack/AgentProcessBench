@@ -6,6 +6,8 @@
 - 单独标注最终结果（正/负/不确定）
 - 标注结果落盘到 SQLite + 追加式 JSONL 导出文件，便于后续训练/统计
 
+标注规范手册见：`annotation_platform/ANNOTATION_GUIDE.md`
+
 ## 1) 启动
 
 在仓库根目录运行：

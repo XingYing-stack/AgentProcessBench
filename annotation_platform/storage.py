@@ -261,6 +261,22 @@ class AnnotationStore:
         finally:
             conn.close()
 
+    def has_done_annotation(self, *, dataset: str, record_id: str, annotator: str) -> bool:
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT 1
+                  FROM annotations
+                 WHERE dataset = ? AND record_id = ? AND annotator = ? AND status = 'done'
+                 LIMIT 1
+                """,
+                (dataset, record_id, annotator),
+            ).fetchone()
+            return row is not None
+        finally:
+            conn.close()
+
     def find_next_unannotated(
         self,
         *,
@@ -272,7 +288,10 @@ class AnnotationStore:
         if start_index < 0:
             start_index = 0
         for idx in range(start_index, len(record_ids)):
-            if not self.has_annotation(dataset=dataset, record_id=record_ids[idx], annotator=annotator):
+            if not self.has_done_annotation(dataset=dataset, record_id=record_ids[idx], annotator=annotator):
+                return idx
+        for idx in range(0, min(start_index, len(record_ids))):
+            if not self.has_done_annotation(dataset=dataset, record_id=record_ids[idx], annotator=annotator):
                 return idx
         return None
 

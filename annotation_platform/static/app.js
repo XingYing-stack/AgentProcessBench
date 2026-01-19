@@ -13,6 +13,7 @@ const state = {
   finalLabelTouched: false,
   comment: "",
   focusedAssistantIdx: null,
+  toolsFilter: "",
 };
 
 function _readRememberAnnotator() {
@@ -306,6 +307,110 @@ function previewText(value, limit = 160) {
   return t.slice(0, limit - 1) + "…";
 }
 
+function normalizeToolDef(tool) {
+  if (!tool || typeof tool !== "object") return null;
+
+  if (tool.type === "function" && tool.function && typeof tool.function === "object") {
+    return {
+      type: "function",
+      name: String(tool.function.name || ""),
+      description: tool.function.description || "",
+      parameters: tool.function.parameters,
+      raw: tool,
+    };
+  }
+
+  if (tool.name || tool.description || tool.parameters) {
+    return {
+      type: tool.type || "unknown",
+      name: String(tool.name || ""),
+      description: tool.description || "",
+      parameters: tool.parameters,
+      raw: tool,
+    };
+  }
+
+  return {
+    type: tool.type || "unknown",
+    name: String(tool.name || ""),
+    description: "",
+    parameters: null,
+    raw: tool,
+  };
+}
+
+function toolMatchesFilter(toolDef, filterText) {
+  const q = String(filterText || "").trim().toLowerCase();
+  if (!q) return true;
+  const hay = `${toolDef.name}\n${stringify(toolDef.description)}\n${stringify(toolDef.parameters)}\n${stringify(
+    toolDef.raw
+  )}`.toLowerCase();
+  return hay.includes(q);
+}
+
+function renderToolsDocs() {
+  const root = $("toolsDocs");
+  if (!root) return;
+  root.innerHTML = "";
+
+  if (!state.item) {
+    root.textContent = "未加载样本";
+    return;
+  }
+
+  const tools = state.item.tools;
+  if (!Array.isArray(tools) || tools.length === 0) {
+    root.textContent = "该样本未提供 tools 字段。";
+    return;
+  }
+
+  const normalized = tools.map(normalizeToolDef).filter(Boolean);
+  const filtered = normalized.filter((t) => toolMatchesFilter(t, state.toolsFilter));
+
+  if (filtered.length === 0) {
+    root.textContent = "无匹配工具（可清空过滤条件）。";
+    return;
+  }
+
+  filtered.forEach((toolDef) => {
+    const details = document.createElement("details");
+    details.className = "toolDoc";
+
+    const summary = document.createElement("summary");
+    const sumWrap = document.createElement("div");
+    sumWrap.className = "toolSummary";
+
+    const name = document.createElement("span");
+    name.className = "toolName";
+    name.textContent = toolDef.name || "(unnamed)";
+    sumWrap.appendChild(name);
+
+    const desc = document.createElement("span");
+    desc.className = "toolDesc";
+    desc.textContent = previewText(toolDef.description || stringify(toolDef.raw), 220);
+    sumWrap.appendChild(desc);
+
+    summary.appendChild(sumWrap);
+    details.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "toolDocBody";
+
+    const descPre = document.createElement("pre");
+    descPre.className = "pre";
+    descPre.textContent = String(toolDef.description || "").trim() || "(no description)";
+    body.appendChild(descPre);
+
+    const schemaPre = document.createElement("pre");
+    schemaPre.className = "pre";
+    schemaPre.textContent = stringifyToolContent(toolDef.parameters || toolDef.raw);
+    body.appendChild(schemaPre);
+
+    details.appendChild(body);
+    root.appendChild(details);
+  });
+}
+
 function renderMessages() {
   const root = $("messages");
   root.innerHTML = "";
@@ -477,11 +582,14 @@ function setItem(payload) {
     query_index: payload.query_index,
     sample_index: payload.sample_index,
   });
+  $("currentIndex").textContent = payload.index_in_dataset ?? "-";
   $("question").textContent = stringify(payload.question || "");
   $("taskDescription").textContent = stringify(payload.task_description || "");
   $("groundTruth").innerHTML = renderGroundTruthHtml(payload.ground_truth || "");
   $("rewardInfo").innerHTML = renderRewardInfoHtml(payload.reward_info || "");
   $("comment").value = state.comment;
+  const tf = $("toolsFilter");
+  if (tf) tf.value = state.toolsFilter;
 
   const rh = payload.reward_info && payload.reward_info.reward !== undefined ? payload.reward_info.reward : null;
   if (rh === null) {
@@ -499,6 +607,7 @@ function setItem(payload) {
   renderFinalPills();
   renderStepsNav();
   renderMessages();
+  renderToolsDocs();
   $("jumpIndex").value = String(payload.index_in_dataset ?? "");
 }
 
@@ -695,6 +804,11 @@ function initEvents() {
       e.preventDefault();
       $("jumpBtn").click();
     }
+  });
+
+  $("toolsFilter")?.addEventListener("input", (e) => {
+    state.toolsFilter = (e.target.value || "").trim();
+    renderToolsDocs();
   });
 
   document.addEventListener("keydown", (e) => {

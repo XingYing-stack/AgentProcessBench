@@ -425,6 +425,65 @@ textarea {
   background: rgba(248, 250, 252, 0.9);
 }
 
+.toolsFilterRow {
+  margin-bottom: 8px;
+}
+
+.toolsDocs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toolDoc {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+  padding: 10px;
+}
+
+.toolDoc summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.toolDoc summary::-webkit-details-marker {
+  display: none;
+}
+
+.toolSummary {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.toolName {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  background: rgba(37, 99, 235, 0.07);
+  color: #1d4ed8;
+}
+
+.toolDesc {
+  font-size: 12px;
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolDocBody {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 @media (max-width: 980px) {
   .layout {
     grid-template-columns: 1fr;
