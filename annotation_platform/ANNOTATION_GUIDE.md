@@ -1,4 +1,4 @@
-# AgentProcessBench 标注手册（v1.0）
+# AgentProcessBench 标注手册（v1.1）
 
 本手册用于 **AgentProcessBench（工具使用场景的 Process Reward / 步骤级监督）** 的人工标注。本基准关注 **Tool-Use Agent 在多步交互中的过程质量**，重点看：
 
@@ -406,4 +406,4 @@
 
 ---
 
-**本手册为 AgentProcessBench 官方标注规范 v1.0**  
+**本手册为 AgentProcessBench 官方标注规范 v1.1**  
