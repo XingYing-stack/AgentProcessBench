@@ -1,2 +1,3 @@
 *.pyc
 *.sqlite3
+annotation_platform/data/exports/
