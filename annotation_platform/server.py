@@ -336,7 +336,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--port", default=8000, type=int)
     parser.add_argument(
         "--annotation_dir",
-        default=str(Path("output/annotation_file")),
+        default=str(Path("output/annotation_file_diverse_queries")),
         help="Directory containing *.jsonl to annotate.",
     )
     parser.add_argument(
