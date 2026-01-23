@@ -52,6 +52,9 @@ class AppState:
         self.datasets: dict[str, DatasetIndex] = discover_datasets(dataset_dir)
         self.lock = threading.Lock()
 
+    def refresh_datasets(self) -> None:
+        self.datasets = discover_datasets(self.dataset_dir)
+
 
 class RequestHandler(BaseHTTPRequestHandler):
     server_version = "AgentProcessBenchAnnotation/0.1"
@@ -59,6 +62,20 @@ class RequestHandler(BaseHTTPRequestHandler):
     @property
     def state(self) -> AppState:
         return self.server.state  # type: ignore[attr-defined]
+
+    def _get_dataset_fresh(self, dataset: str) -> DatasetIndex | None:
+        ds = self.state.datasets.get(dataset)
+        if ds is None:
+            return None
+        try:
+            stale = ds.is_stale()
+        except OSError:
+            stale = True
+        if not stale:
+            return ds
+        with self.state.lock:
+            self.state.refresh_datasets()
+            return self.state.datasets.get(dataset)
 
     def _serve_static(self, rel_path: str) -> None:
         if rel_path == "" or rel_path == "/":
@@ -113,7 +130,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             if dataset == "" or annotator == "":
                 _json_response(self, HTTPStatus.BAD_REQUEST, {"error": "dataset and annotator required"})
                 return
-            ds = self.state.datasets.get(dataset)
+            ds = self._get_dataset_fresh(dataset)
             if ds is None:
                 _json_response(self, HTTPStatus.NOT_FOUND, {"error": f"unknown dataset: {dataset}"})
                 return
@@ -138,7 +155,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             if dataset == "" or index_str == "":
                 _json_response(self, HTTPStatus.BAD_REQUEST, {"error": "dataset and index required"})
                 return
-            ds = self.state.datasets.get(dataset)
+            ds = self._get_dataset_fresh(dataset)
             if ds is None:
                 _json_response(self, HTTPStatus.NOT_FOUND, {"error": f"unknown dataset: {dataset}"})
                 return
@@ -151,7 +168,15 @@ class RequestHandler(BaseHTTPRequestHandler):
             if index < 0 or index >= ds.size:
                 _json_response(self, HTTPStatus.BAD_REQUEST, {"error": "index out of range"})
                 return
-            item = ds.read_item(index)
+            try:
+                item = ds.read_item(index)
+            except Exception as e:
+                _json_response(
+                    self,
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": "failed to read dataset item", "dataset": dataset, "index": index, "detail": str(e)},
+                )
+                return
             record_id = ds.record_ids[index]
 
             existing = None
@@ -168,7 +193,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             if dataset == "" or annotator == "":
                 _json_response(self, HTTPStatus.BAD_REQUEST, {"error": "dataset and annotator required"})
                 return
-            ds = self.state.datasets.get(dataset)
+            ds = self._get_dataset_fresh(dataset)
             if ds is None:
                 _json_response(self, HTTPStatus.NOT_FOUND, {"error": f"unknown dataset: {dataset}"})
                 return
@@ -180,8 +205,21 @@ class RequestHandler(BaseHTTPRequestHandler):
             if next_index is None:
                 _json_response(self, HTTPStatus.OK, {"done": True, "dataset": dataset})
                 return
-
-            item = ds.read_item(next_index)
+            try:
+                item = ds.read_item(next_index)
+            except Exception as e:
+                _json_response(
+                    self,
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {
+                        "error": "failed to read dataset item",
+                        "dataset": dataset,
+                        "index": next_index,
+                        "detail": str(e),
+                        "hint": "If you regenerated the JSONL while the server was running, refresh/restart the server.",
+                    },
+                )
+                return
             record_id = ds.record_ids[next_index]
             existing = self.state.store.get_annotation(dataset=dataset, record_id=record_id, annotator=annotator)
             payload = ds.to_payload(
@@ -217,7 +255,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if dataset == "" or record_id == "" or annotator == "":
             _json_response(self, HTTPStatus.BAD_REQUEST, {"error": "dataset, record_id, annotator required"})
             return
-        if dataset not in self.state.datasets:
+        if self._get_dataset_fresh(dataset) is None:
             _json_response(self, HTTPStatus.NOT_FOUND, {"error": f"unknown dataset: {dataset}"})
             return
         if not isinstance(step_labels, dict):
@@ -269,7 +307,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            ds = self.state.datasets.get(dataset)
+            ds = self._get_dataset_fresh(dataset)
             if ds is None:
                 _json_response(self, HTTPStatus.NOT_FOUND, {"error": f"unknown dataset: {dataset}"})
                 return
@@ -279,7 +317,20 @@ class RequestHandler(BaseHTTPRequestHandler):
             if ds.record_ids[index_in_dataset] != record_id:
                 _json_response(self, HTTPStatus.BAD_REQUEST, {"error": "record_id does not match index_in_dataset"})
                 return
-            item = ds.read_item(index_in_dataset)
+            try:
+                item = ds.read_item(index_in_dataset)
+            except Exception as e:
+                _json_response(
+                    self,
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {
+                        "error": "failed to read dataset item for validation",
+                        "dataset": dataset,
+                        "index": index_in_dataset,
+                        "detail": str(e),
+                    },
+                )
+                return
             messages = item.get("messages") or []
             if not isinstance(messages, list):
                 messages = []

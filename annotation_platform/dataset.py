@@ -40,17 +40,33 @@ class DatasetIndex:
     path: Path
     offsets: list[int]
     record_ids: list[str]
+    stat_mtime_ns: int
+    stat_size: int
 
     @property
     def size(self) -> int:
         return len(self.offsets)
 
+    def is_stale(self) -> bool:
+        stat = self.path.stat()
+        return stat.st_mtime_ns != self.stat_mtime_ns or stat.st_size != self.stat_size
+
     def read_item(self, index: int) -> dict[str, Any]:
+        if self.is_stale():
+            raise RuntimeError(f"dataset file changed on disk: {self.path}")
         offset = self.offsets[index]
         with self.path.open("rb") as f:
             f.seek(offset)
             line = f.readline()
-        return json.loads(line.decode("utf-8"))
+        if not line:
+            raise RuntimeError(f"unexpected EOF while reading {self.path} at offset={offset}")
+        text = line.decode("utf-8", errors="replace").strip()
+        if not text:
+            raise ValueError(f"empty/whitespace JSONL line in {self.path} at offset={offset}")
+        obj = json.loads(text)
+        if not isinstance(obj, dict):
+            raise ValueError(f"expected JSON object in {self.path} at offset={offset}, got {type(obj).__name__}")
+        return obj
 
     def to_payload(
         self,
@@ -107,22 +123,35 @@ class DatasetIndex:
 def _build_index(dataset_name: str, path: Path) -> DatasetIndex:
     offsets: list[int] = []
     record_ids: list[str] = []
+    stat = path.stat()
     with path.open("rb") as f:
         while True:
             offset = f.tell()
             line = f.readline()
             if not line:
                 break
-            offsets.append(offset)
             try:
-                obj = json.loads(line.decode("utf-8"))
+                text = line.decode("utf-8", errors="replace").strip()
+            except UnicodeDecodeError:
+                continue
+            if not text:
+                continue
+            try:
+                obj = json.loads(text)
             except json.JSONDecodeError:
-                obj = {}
-            if isinstance(obj, dict):
-                record_ids.append(_stable_record_id(dataset_name, obj))
-            else:
-                record_ids.append(_stable_record_id(dataset_name, {"_raw": line.decode("utf-8", errors="replace")}))
-    return DatasetIndex(name=dataset_name, path=path, offsets=offsets, record_ids=record_ids)
+                continue
+            if not isinstance(obj, dict):
+                continue
+            offsets.append(offset)
+            record_ids.append(_stable_record_id(dataset_name, obj))
+    return DatasetIndex(
+        name=dataset_name,
+        path=path,
+        offsets=offsets,
+        record_ids=record_ids,
+        stat_mtime_ns=stat.st_mtime_ns,
+        stat_size=stat.st_size,
+    )
 
 
 def discover_datasets(dataset_dir: Path) -> dict[str, DatasetIndex]:
