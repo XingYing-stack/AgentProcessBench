@@ -617,11 +617,17 @@ function renderMessages() {
       const order = state.llmReferences.order || Object.keys(models).sort();
       const details = document.createElement("details");
       details.className = "llmRefsDetails";
-      details.open = true;
+      details.open = false;
 
       const summary = document.createElement("summary");
       summary.className = "llmRefsSummary mono small muted";
-      summary.textContent = `LLM 参考标注（${order.length} models）`;
+      summary.textContent = `LLM Annotations for Reference（${order.length} models）`;
+      summary.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+      details.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
       details.appendChild(summary);
 
       const refWrap = document.createElement("div");

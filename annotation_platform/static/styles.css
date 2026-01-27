@@ -334,6 +334,29 @@ textarea {
   margin: 0;
 }
 
+.llmRefsDetails {
+  margin-top: 10px;
+}
+
+.llmRefsSummary {
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.llmRefsSummary::-webkit-details-marker {
+  display: none;
+}
+
+.llmRefsSummary::before {
+  content: "▸ ";
+  color: var(--muted);
+}
+
+.llmRefsDetails[open] > .llmRefsSummary::before {
+  content: "▾ ";
+}
+
 .llmRefs {
   margin-top: 10px;
   padding: 8px;
