@@ -55,3 +55,14 @@ python annotation_platform/server.py --annotation_dir output/annotation_file --d
 ## 4) 导出
 
 平台会在每次保存标注时，向对应导出文件追加一行 JSON（append-only）。
+
+## 5) LLM 自动标注（离线脚本）
+
+在仓库根目录运行（读取环境变量 `OPENAI_BASE_URL` / `OPENAI_API_KEY`，也可用参数覆盖）：
+
+- 不带 `ground_truth`/`reward_info`（推荐用于正式评测的过程打分）：
+  - `python -m annotation_platform.llm_annotate output/annotation_file/gaia_dev.jsonl --model <model> --mode blind`
+- 带 `ground_truth`/`reward_info`（仅建议用于做参考标注/对齐数据）：
+  - `python -m annotation_platform.llm_annotate output/annotation_file/gaia_dev.jsonl --model <model> --mode reference`
+
+默认输出到：`annotation_platform/data/exports/<dataset>__<annotator>.jsonl`，并在每行多写入一个 `explanations` 字段（便于人工复核）。

@@ -38,10 +38,74 @@ def _read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
         return {}
 
 
+def _iter_jsonl(path: Path) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                out.append(obj)
+    return out
+
+
+def _coerce_label(v: Any) -> int | None:
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, int) and v in (-1, 0, 1):
+        return v
+    if isinstance(v, str):
+        s = v.strip()
+        if s in {"-1", "0", "1"}:
+            return int(s)
+        return None
+    return None
+
+
+def _load_llm_annotations_dir(dir_path: Path) -> dict[str, dict[str, dict[str, dict[str, Any]]]]:
+    """
+    Returns: dataset -> model_key -> record_id -> {"final_label", "step_labels", "explanations"}
+    File naming convention: <dataset>__<model_key>.jsonl
+    """
+    out: dict[str, dict[str, dict[str, dict[str, Any]]]] = {}
+    for p in sorted(dir_path.glob("*.jsonl")):
+        stem = p.stem
+        if "__" not in stem:
+            continue
+        dataset, model_key = stem.split("__", 1)
+        for obj in _iter_jsonl(p):
+            rid = obj.get("record_id")
+            if not isinstance(rid, str) or not rid:
+                continue
+            step_labels_raw = obj.get("step_labels") if isinstance(obj.get("step_labels"), dict) else {}
+            step_labels = {str(k): _coerce_label(v) for k, v in step_labels_raw.items()}
+            explanations_raw = obj.get("explanations") if isinstance(obj.get("explanations"), dict) else {}
+            steps_expl_raw = explanations_raw.get("steps") if isinstance(explanations_raw.get("steps"), dict) else {}
+            steps_expl = {str(k): (v if isinstance(v, str) or v is None else str(v)) for k, v in steps_expl_raw.items()}
+            final_expl = explanations_raw.get("final")
+            if not (isinstance(final_expl, str) or final_expl is None):
+                final_expl = str(final_expl)
+
+            out.setdefault(dataset, {}).setdefault(model_key, {})[rid] = {
+                "final_label": _coerce_label(obj.get("final_label")),
+                "step_labels": step_labels,
+                "explanations": {"steps": steps_expl, "final": final_expl},
+            }
+    return out
+
+
 class AppState:
-    def __init__(self, dataset_dir: Path, data_dir: Path) -> None:
+    def __init__(self, dataset_dir: Path, data_dir: Path, llm_annotations_dir: Path | None) -> None:
         self.dataset_dir = dataset_dir
         self.data_dir = data_dir
+        self.llm_annotations_dir = llm_annotations_dir
         self.static_dir = Path(__file__).resolve().parent / "static"
 
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -50,6 +114,9 @@ class AppState:
 
         self.store = AnnotationStore(self.data_dir / "annotations.sqlite3", exports_dir=exports_dir)
         self.datasets: dict[str, DatasetIndex] = discover_datasets(dataset_dir)
+        self.llm_annotations: dict[str, dict[str, dict[str, dict[str, Any]]]] = {}
+        if self.llm_annotations_dir is not None and self.llm_annotations_dir.exists():
+            self.llm_annotations = _load_llm_annotations_dir(self.llm_annotations_dir)
         self.lock = threading.Lock()
 
     def refresh_datasets(self) -> None:
@@ -184,6 +251,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                 existing = self.state.store.get_annotation(dataset=dataset, record_id=record_id, annotator=annotator)
 
             payload = ds.to_payload(item=item, dataset=dataset, index=index, record_id=record_id, existing=existing)
+            if self.state.llm_annotations:
+                refs_for_ds = self.state.llm_annotations.get(dataset) or {}
+                models_out: dict[str, Any] = {}
+                for model_key in sorted(refs_for_ds.keys()):
+                    rec = refs_for_ds[model_key].get(record_id)
+                    if rec is None:
+                        continue
+                    models_out[model_key] = rec
+                if models_out:
+                    payload["llm_references"] = {"models": models_out, "order": sorted(models_out.keys())}
             _json_response(self, HTTPStatus.OK, payload)
             return
 
@@ -225,6 +302,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             payload = ds.to_payload(
                 item=item, dataset=dataset, index=next_index, record_id=record_id, existing=existing
             )
+            if self.state.llm_annotations:
+                refs_for_ds = self.state.llm_annotations.get(dataset) or {}
+                models_out: dict[str, Any] = {}
+                for model_key in sorted(refs_for_ds.keys()):
+                    rec = refs_for_ds[model_key].get(record_id)
+                    if rec is None:
+                        continue
+                    models_out[model_key] = rec
+                if models_out:
+                    payload["llm_references"] = {"models": models_out, "order": sorted(models_out.keys())}
             _json_response(self, HTTPStatus.OK, payload)
             return
 
@@ -395,6 +482,11 @@ def _parse_args() -> argparse.Namespace:
         default=str(Path("annotation_platform/data")),
         help="Directory for sqlite + exports.",
     )
+    parser.add_argument(
+        "--llm_annotations_dir",
+        default="./annotation_platform/data/llm_annotations",
+        help="Optional directory containing LLM judge annotation JSONL files (named <dataset>__*.jsonl) to show as step-level references.",
+    )
     return parser.parse_args()
 
 
@@ -402,11 +494,18 @@ def main() -> None:
     args = _parse_args()
     dataset_dir = Path(args.annotation_dir).resolve()
     data_dir = Path(args.data_dir).resolve()
+    llm_annotations_dir_arg = str(args.llm_annotations_dir or "").strip()
+    llm_annotations_dir: Path | None
+    if llm_annotations_dir_arg:
+        llm_annotations_dir = Path(llm_annotations_dir_arg).expanduser().resolve()
+    else:
+        candidate = data_dir / "llm_annotations"
+        llm_annotations_dir = candidate if candidate.exists() else None
 
     if not dataset_dir.exists():
         raise SystemExit(f"annotation_dir not found: {dataset_dir}")
 
-    state = AppState(dataset_dir=dataset_dir, data_dir=data_dir)
+    state = AppState(dataset_dir=dataset_dir, data_dir=data_dir, llm_annotations_dir=llm_annotations_dir)
     if len(state.datasets) == 0:
         raise SystemExit(f"no datasets found under: {dataset_dir} (expected *.jsonl)")
 
@@ -417,6 +516,10 @@ def main() -> None:
     print(f"[annotation] datasets: {', '.join(sorted(state.datasets))}")
     print(f"[annotation] sqlite: {state.store.db_path}")
     print(f"[annotation] exports: {state.store.exports_dir}")
+    if state.llm_annotations_dir is not None:
+        ds_cnt = len(state.llm_annotations)
+        model_cnt = sum(len(v) for v in state.llm_annotations.values())
+        print(f"[annotation] llm_annotations_dir: {state.llm_annotations_dir} (datasets={ds_cnt}, models={model_cnt})")
     server.serve_forever()
 
 

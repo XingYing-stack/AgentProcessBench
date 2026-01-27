@@ -8,6 +8,7 @@ const state = {
   annotator: "",
   rememberAnnotator: false,
   item: null,
+  llmReferences: null,
   stepLabels: {},
   finalLabel: null,
   finalLabelTouched: false,
@@ -29,6 +30,29 @@ function _setRememberAnnotator(v) {
 
 function isValidLabel(v) {
   return v === 1 || v === 0 || v === -1;
+}
+
+function normalizeLabel(v) {
+  if (v === null || v === undefined) return null;
+  if (v === 1 || v === 0 || v === -1) return v;
+  const n = parseInt(String(v).trim(), 10);
+  return n === 1 || n === 0 || n === -1 ? n : null;
+}
+
+function labelBadgeClass(v) {
+  const n = normalizeLabel(v);
+  if (n === 1) return "hlGreen";
+  if (n === 0) return "hlAmber";
+  if (n === -1) return "hlRed";
+  return "muted";
+}
+
+function labelText(v) {
+  const n = normalizeLabel(v);
+  if (n === 1) return "+1";
+  if (n === 0) return "0";
+  if (n === -1) return "-1";
+  return "—";
 }
 
 function showLogin() {
@@ -587,6 +611,97 @@ function renderMessages() {
 
     wrap.appendChild(header);
     wrap.appendChild(body);
+
+    if (assistantSet.has(idx) && state.llmReferences && state.llmReferences.models) {
+      const models = state.llmReferences.models || {};
+      const order = state.llmReferences.order || Object.keys(models).sort();
+      const details = document.createElement("details");
+      details.className = "llmRefsDetails";
+      details.open = true;
+
+      const summary = document.createElement("summary");
+      summary.className = "llmRefsSummary mono small muted";
+      summary.textContent = `LLM 参考标注（${order.length} models）`;
+      details.appendChild(summary);
+
+      const refWrap = document.createElement("div");
+      refWrap.className = "llmRefs";
+
+      order.forEach((modelKey) => {
+        const rec = models[modelKey];
+        if (!rec) return;
+        const stepLabels = rec.step_labels || {};
+        const explanations = rec.explanations || {};
+        const stepsExpl = explanations.steps || {};
+        const v = stepLabels[String(idx)];
+        const expl = stepsExpl[String(idx)];
+
+        const row = document.createElement("div");
+        row.className = "llmRefRow";
+
+        const modelEl = document.createElement("span");
+        modelEl.className = "llmRefModel mono";
+        modelEl.textContent = String(modelKey);
+        row.appendChild(modelEl);
+
+        const score = document.createElement("span");
+        score.className = `llmRefScore ${labelBadgeClass(v)}`;
+        score.textContent = labelText(v);
+        row.appendChild(score);
+
+        const explEl = document.createElement("span");
+        explEl.className = "llmRefExpl";
+        explEl.textContent = expl === null || expl === undefined || String(expl).trim() === "" ? "" : String(expl);
+        row.appendChild(explEl);
+
+        refWrap.appendChild(row);
+      });
+
+      if (idx === finalAssistantIdx) {
+        const modelsFinal = state.llmReferences.models || {};
+        const orderFinal = state.llmReferences.order || Object.keys(modelsFinal).sort();
+        const fin = document.createElement("div");
+        fin.className = "llmFinalRefs";
+        const title = document.createElement("div");
+        title.className = "llmFinalTitle mono muted small";
+        title.textContent = "LLM final_label (reference):";
+        fin.appendChild(title);
+
+        orderFinal.forEach((modelKey) => {
+          const rec = modelsFinal[modelKey];
+          if (!rec) return;
+          const v = rec.final_label;
+          const expl = rec.explanations && rec.explanations.final;
+          const row = document.createElement("div");
+          row.className = "llmRefRow";
+
+          const modelEl = document.createElement("span");
+          modelEl.className = "llmRefModel mono";
+          modelEl.textContent = String(modelKey);
+          row.appendChild(modelEl);
+
+          const score = document.createElement("span");
+          score.className = `llmRefScore ${labelBadgeClass(v)}`;
+          score.textContent = labelText(v);
+          row.appendChild(score);
+
+          const explEl = document.createElement("span");
+          explEl.className = "llmRefExpl";
+          explEl.textContent = expl === null || expl === undefined || String(expl).trim() === "" ? "" : String(expl);
+          row.appendChild(explEl);
+
+          fin.appendChild(row);
+        });
+
+        refWrap.appendChild(fin);
+      }
+
+      if (refWrap.childNodes.length > 0) {
+        details.appendChild(refWrap);
+        body.appendChild(details);
+      }
+    }
+
     if (assistantSet.has(idx)) {
       wrap.addEventListener("click", () => {
         state.focusedAssistantIdx = idx;
@@ -642,6 +757,7 @@ function renderStepsNav() {
 
 function setItem(payload) {
   state.item = payload;
+  state.llmReferences = payload.llm_references || null;
   state.stepLabels = (payload.existing_annotation && payload.existing_annotation.step_labels) || {};
   if (payload.existing_annotation) {
     const touched = payload.existing_annotation.final_label_touched ?? true;
