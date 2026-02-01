@@ -54,8 +54,7 @@ def _env_first(names: list[str]) -> str | None:
     return None
 
 
-JUDGE_RUBRIC = """
-You are a strict but fair trajectory annotator for tool-use agents.
+JUDGE_RUBRIC = """You are a strict but fair trajectory annotator for tool-use agents.
 
 You will be given one complete trajectory consisting of system, user, assistant,
 and tool messages, together with the tool definitions.
@@ -97,7 +96,9 @@ Important rules:
   strategy typically transitions from 0 to -1.
 - If an incorrect statement does not affect any subsequent reasoning or actions
   and is not relied upon later, it may be labeled 0; otherwise, it should be labeled -1.
-- Violating any policy or requirement specified in the system prompt is always -1.
+- Any violation of the policies or requirements stipulated in the system prompt results in a score of -1, with the exception of certain output formatting norms (e.g., providing a text response simultaneously with a tool call, combining text with function calls in pure function requests, or executing multiple parallel tool calls are deemed acceptable).
+- A score of +1 shall be assigned if the assistant's first message constitutes a salutation without providing specific information, and this exemption applies only to the first message.
+- Upon user request, if the assistant executes specific instructions, a score of +1 shall be awarded, notwithstanding any deviation from the overarching objective.
 
 After labeling all assistant steps, also assign a label to:
 
@@ -113,26 +114,62 @@ Do not include explanations, markdown, or any additional text.
 
 REFERENCE_MODE_JUDGE_RUBRIC = """You are a strict but fair trajectory annotator for tool-use agents.
 
-You will be given one full trajectory (system/user/assistant/tool messages), plus tool definitions.
-Your job is to label EACH assistant message (each assistant message is one Step) as:
-- +1: correct/reasonable and clearly moves the task closer to completion
--  0: neutral / exploratory / low-impact / insufficient evidence / debatable
-- -1: wrong/misleading/redundant/violates constraints OR pushes trajectory away from success
+You will be given one complete trajectory consisting of system, user, assistant,
+and tool messages, together with the tool definitions.
 
-Important:
-- Only assistant messages are labeled. User/tool messages are evidence.
-- Any -1 score triggers a cumulative penalty: all following steps in that workflow remain -1 unless the mistake is fixed or an independent task begins.
-- If a tool call fails for external reasons (timeout/404/etc) and the attempt was reasonable: usually 0.
-- Repeating the same failed action without changing strategy/params trends from 0 to -1.
-- Making up tool results, citing non-existent evidence, or misreading tool outputs is -1.
-- Avoid hindsight bias: judge each step by information available up to that point
-- Violating the policy requirements in the system prompt is -1.
+Your task is to label EACH assistant message (each assistant message constitutes
+one Step) using the following scheme:
+
++1: Correct and effective.
+    The step is factually correct given the information available at that time
+    and clearly moves the task closer to successful completion by:
+    (i) correctly invoking a tool or interpreting tool outputs, or
+    (ii) introducing valid constraints, decisions, or information that
+         reduces the remaining uncertainty of the task.
+
+ 0: Neutral or exploratory.
+    The step is reasonable but has limited or unclear impact on task progress.
+    This includes exploratory reasoning, redundant restatements, partial planning,
+    or cases where the correctness is debatable given the available evidence.
+    Tool calls that fail due to external reasons (e.g., timeout, 404), when the
+    attempt itself is reasonable, are typically labeled 0.
+
+-1: Incorrect or harmful.
+    The step contains factual errors, misinterprets tool outputs, violates
+    constraints, repeats failed actions without a meaningful change in strategy,
+    fabricates tool results or evidence, or otherwise pushes the trajectory away
+    from successful completion.
+
+Important rules:
+
+- Only assistant messages are labeled. User and tool messages serve only as evidence.
+- Avoid hindsight bias: judge each step strictly based on the information available
+  up to that point in the trajectory.
+- Any step labeled -1 triggers a cumulative penalty: all subsequent assistant steps
+  in the same workflow should also be labeled -1, unless one of the following holds:
+    (i) the assistant explicitly acknowledges and corrects the earlier mistake, or
+    (ii) the assistant produces a subsequent step that no longer depends on the
+         incorrect assumption and effectively resumes progress toward the task.
+- Repeating the same failed action without a meaningful change in parameters or
+  strategy typically transitions from 0 to -1.
+- If an incorrect statement does not affect any subsequent reasoning or actions
+  and is not relied upon later, it may be labeled 0; otherwise, it should be labeled -1.
+- Any violation of the policies or requirements stipulated in the system prompt results in a score of -1, with the exception of certain output formatting norms (e.g., providing a text response simultaneously with a tool call, combining text with function calls in pure function requests, or executing multiple parallel tool calls are deemed acceptable).
+- A score of +1 shall be assigned if the assistant's first message constitutes a salutation without providing specific information, and this exemption applies only to the first message.
+- Upon user request, if the assistant executes specific instructions, a score of +1 shall be awarded, notwithstanding any deviation from the overarching objective.
 
 Reference mode only:
 - You may use ground_truth/reward_info to verify the FINAL_RESULT and to spot incorrect steps.
 
-You must also label FINAL_RESULT as +1/0/-1 for the overall outcome.
-Return STRICT JSON ONLY (no Markdown, no extra text)."""
+After labeling all assistant steps, also assign a label to:
+
+FINAL_RESULT:
++1: The overall task is successfully completed.
+ 0: The outcome is partial, ambiguous, or incomplete.
+-1: The task fails due to incorrect reasoning, tool misuse, or unresolved errors.
+
+Return STRICT JSON ONLY.
+Do not include explanations, markdown, or any additional text."""
 
 @dataclass(frozen=True)
 class JudgeConfig:
@@ -143,17 +180,6 @@ class JudgeConfig:
     max_tokens: int
     timeout_s: int
     mode: str  # "blind" | "reference"
-
-
-def _truncate_text(text: Any, *, max_chars: int) -> Any:
-    if not isinstance(text, str):
-        return text
-    if max_chars <= 0 or len(text) <= max_chars:
-        return text
-    head = max_chars // 2
-    tail = max_chars - head
-    removed = len(text) - (head + tail)
-    return text[:head] + f"\n…[TRUNCATED {removed} CHARS]…\n" + text[-tail:]
 
 
 def _build_judge_input(
@@ -168,7 +194,7 @@ def _build_judge_input(
         "question": item.get("question"),
         "task_description": item.get("task_description"),
         "tools": item.get("tools"),
-        "messages": item.get("messages"),
+        "messages": list(enumerate(item.get("messages"))),
         "assistant_message_indices": assistant_indices,
         "notes": {
             "step_definition": "Each Step == one message with role=='assistant'. Use the given indices.",
@@ -182,7 +208,6 @@ def _build_judge_input(
         used_judge_rubric = REFERENCE_MODE_JUDGE_RUBRIC
     else:
         used_judge_rubric = JUDGE_RUBRIC
-
     user_instructions = """Label every index in assistant_message_indices.
 
 Output JSON schema:
@@ -275,6 +300,44 @@ def _normalize_judge_output(
     if not isinstance(final_expl, str):
         final_expl = "" if final_expl is None else str(final_expl)
     explanations_out = {"steps": steps_expl, "final": final_expl}
+
+    return step_labels, final_label, explanations_out
+
+
+def _normalize_judge_output_lenient(
+    raw: dict[str, Any],
+    *,
+    assistant_indices: list[int],
+) -> tuple[dict[str, int], int, dict[str, Any]]:
+    expected_keys = [str(i) for i in assistant_indices]
+
+    step_labels_raw = raw.get("step_labels")
+    step_labels: dict[str, int] = {}
+    for k in expected_keys:
+        default_val = 0
+        if isinstance(step_labels_raw, dict) and k in step_labels_raw:
+            try:
+                default_val = _coerce_int_label(step_labels_raw[k])
+            except Exception:
+                default_val = 0
+        step_labels[k] = default_val
+
+    try:
+        final_label = _coerce_int_label(raw.get("final_label"))
+    except Exception:
+        final_label = 0
+
+    explanations_raw = raw.get("explanations")
+    explanations_dict = explanations_raw if isinstance(explanations_raw, dict) else {}
+    steps_expl_raw = explanations_dict.get("steps")
+    steps_expl_dict = steps_expl_raw if isinstance(steps_expl_raw, dict) else {}
+    steps_expl: dict[str, str] = {}
+    for k in expected_keys:
+        val = steps_expl_dict.get(k, "")
+        steps_expl[k] = val if isinstance(val, str) else ("" if val is None else str(val))
+    final_expl = explanations_dict.get("final")
+    final_expl_str = final_expl if isinstance(final_expl, str) else ("" if final_expl is None else str(final_expl))
+    explanations_out = {"steps": steps_expl, "final": final_expl_str}
 
     return step_labels, final_label, explanations_out
 
@@ -420,7 +483,7 @@ def annotate_file(
             max_attempts = 5
         else:
             max_attempts = 1
-        print(f'In {cfg.mode} mode, using max_attempts={max_attempts}')
+        # print(f'In {cfg.mode} mode, using max_attempts={max_attempts}')
         for attempt in range(1, max_attempts + 1):
             try:
                 outs = openai_chat_completions(
@@ -435,9 +498,14 @@ def annotate_file(
                 )
                 content = (outs[0].get("content") or "").strip() if outs else ""
                 raw = _extract_json_object(content)
-                step_labels, final_label, explanations = _normalize_judge_output(
-                    raw, assistant_indices=assistant_indices
-                )
+                if cfg.mode == "reference":
+                    step_labels, final_label, explanations = _normalize_judge_output(
+                        raw, assistant_indices=assistant_indices
+                    )
+                else:
+                    step_labels, final_label, explanations = _normalize_judge_output_lenient(
+                        raw, assistant_indices=assistant_indices
+                    )
                 last_error = None
                 break
             except Exception as exc:
@@ -618,7 +686,7 @@ def main() -> None:
     parser.add_argument("--timeout_s", type=int, default=300)
     parser.add_argument("--base_url", type=str, default="", help="OpenAI-compatible base URL (or read from env).")
     parser.add_argument("--api_key", type=str, default="", help="API key (or read from env).")
-    parser.add_argument("--output_path", type=str, default="", help="Output JSONL path (default: annotation_platform/data/llm_annotations/<dataset>__<annotator>.jsonl).")
+    parser.add_argument("--output_path", type=str, default="", help="Output JSONL path (default: ./data/llm_annotations/<dataset>__<annotator>.jsonl).")
     parser.add_argument(
         "--raw_output_dir",
         type=str,

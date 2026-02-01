@@ -249,6 +249,18 @@ class RequestHandler(BaseHTTPRequestHandler):
             existing = None
             if annotator != "":
                 existing = self.state.store.get_annotation(dataset=dataset, record_id=record_id, annotator=annotator)
+                if existing is not None:
+                    messages = item.get("messages") or []
+                    if not isinstance(messages, list):
+                        messages = []
+                    assistant_indices = [
+                        i for i, m in enumerate(messages) if isinstance(m, dict) and m.get("role") == "assistant"
+                    ]
+                    allowed = {str(i) for i in assistant_indices}
+                    step_labels = existing.get("step_labels")
+                    if isinstance(step_labels, dict) and allowed:
+                        existing = dict(existing)
+                        existing["step_labels"] = {k: v for k, v in step_labels.items() if str(k) in allowed}
 
             payload = ds.to_payload(item=item, dataset=dataset, index=index, record_id=record_id, existing=existing)
             if self.state.llm_annotations:
@@ -299,6 +311,18 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
             record_id = ds.record_ids[next_index]
             existing = self.state.store.get_annotation(dataset=dataset, record_id=record_id, annotator=annotator)
+            if existing is not None:
+                messages = item.get("messages") or []
+                if not isinstance(messages, list):
+                    messages = []
+                assistant_indices = [
+                    i for i, m in enumerate(messages) if isinstance(m, dict) and m.get("role") == "assistant"
+                ]
+                allowed = {str(i) for i in assistant_indices}
+                step_labels = existing.get("step_labels")
+                if isinstance(step_labels, dict) and allowed:
+                    existing = dict(existing)
+                    existing["step_labels"] = {k: v for k, v in step_labels.items() if str(k) in allowed}
             payload = ds.to_payload(
                 item=item, dataset=dataset, index=next_index, record_id=record_id, existing=existing
             )
@@ -445,6 +469,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                     {"error": "invalid step_labels for assistant messages", "invalid": invalid_steps},
                 )
                 return
+            # Drop any stale extra keys that may exist from older dataset versions.
+            step_labels = {str(idx): step_labels.get(str(idx)) for idx in assistant_indices}
+        else:
+            # For skipped items, do not persist step labels to avoid carrying stale keys.
+            step_labels = {}
 
         with self.state.lock:
             self.state.store.upsert_annotation(
