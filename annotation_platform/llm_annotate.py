@@ -97,7 +97,7 @@ Important rules:
 - If an incorrect statement does not affect any subsequent reasoning or actions
   and is not relied upon later, it may be labeled 0; otherwise, it should be labeled -1.
 - Any violation of the policies or requirements stipulated in the system prompt results in a score of -1, with the exception of certain output formatting norms (e.g., providing a text response simultaneously with a tool call, combining text with function calls in pure function requests, or executing multiple parallel tool calls are deemed acceptable).
-- A score of +1 shall be assigned if the assistant's first message constitutes a salutation without providing specific information, and this exemption applies only to the first message.
+- A score of +1 is assigned if the entire conversation is initiated by the assistant and its first message is a greeting; this exemption applies only to the first message.
 - Upon user request, if the assistant executes specific instructions, a score of +1 shall be awarded, notwithstanding any deviation from the overarching objective.
 
 After labeling all assistant steps, also assign a label to:
@@ -154,7 +154,7 @@ Important rules:
 - If an incorrect statement does not affect any subsequent reasoning or actions
   and is not relied upon later, it may be labeled 0; otherwise, it should be labeled -1.
 - Any violation of the policies or requirements stipulated in the system prompt results in a score of -1, with the exception of certain output formatting norms (e.g., providing a text response simultaneously with a tool call, combining text with function calls in pure function requests, or executing multiple parallel tool calls are deemed acceptable).
-- A score of +1 shall be assigned if the assistant's first message constitutes a salutation without providing specific information, and this exemption applies only to the first message.
+- A score of +1 is assigned if the entire conversation is initiated by the assistant and its first message is a greeting; this exemption applies only to the first message.
 - Upon user request, if the assistant executes specific instructions, a score of +1 shall be awarded, notwithstanding any deviation from the overarching objective.
 
 Reference mode only:
