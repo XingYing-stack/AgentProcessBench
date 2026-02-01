@@ -104,7 +104,6 @@ After labeling all assistant steps, also assign a label to:
 
 FINAL_RESULT:
 +1: The overall task is successfully completed.
- 0: The outcome is partial, ambiguous, or incomplete.
 -1: The task fails due to incorrect reasoning, tool misuse, or unresolved errors.
 
 Return STRICT JSON ONLY.
@@ -165,7 +164,6 @@ After labeling all assistant steps, also assign a label to:
 
 FINAL_RESULT:
 +1: The overall task is successfully completed.
- 0: The outcome is partial, ambiguous, or incomplete.
 -1: The task fails due to incorrect reasoning, tool misuse, or unresolved errors.
 
 Return STRICT JSON ONLY.
