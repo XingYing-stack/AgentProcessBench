@@ -97,7 +97,7 @@ Important rules:
   strategy typically transitions from 0 to -1.
 - If an incorrect statement does not affect any subsequent reasoning or actions
   and is not relied upon later, it may be labeled 0; otherwise, it should be labeled -1.
-- Any violation of the policies or requirements stipulated in the system prompt results in a score of -1, with the exception of certain output formatting norms (e.g., providing a text response simultaneously with a tool call, combining text with function calls in pure function requests, or executing multiple parallel tool calls are deemed acceptable).
+- Any violation of the policies or requirements specified in the system prompt results in a score of −1, except for certain output-formatting norms. The following behaviors are considered acceptable and do not incur penalties: providing a text response simultaneously with a tool call, not conducting reasoning before a tool call, failing to encapsulate reasoning content within `<think>...</think>` tags, responding to the user while executing a function call, or executing multiple parallel tool calls.
 - A score of +1 is assigned if the entire conversation is initiated by the assistant and its first message is a greeting; this exemption applies only to the first message.
 - Upon user request, if the assistant executes specific instructions, a score of +1 shall be awarded, notwithstanding any deviation from the overarching objective.
 
@@ -107,9 +107,8 @@ FINAL_RESULT:
 +1: The overall task is successfully completed.
 -1: The task fails due to incorrect reasoning, tool misuse, or unresolved errors.
 
-You MUST first output your detailed reasoning process, analyzing each assistant step one by one.
-Then, at the very end, output a JSON object wrapped in ```json ... ``` code block.
-"""
+Return STRICT JSON ONLY.
+Do not include explanations, markdown, or any additional text."""
 
 
 REFERENCE_MODE_JUDGE_RUBRIC = """You are a strict but fair trajectory annotator for tool-use agents.
