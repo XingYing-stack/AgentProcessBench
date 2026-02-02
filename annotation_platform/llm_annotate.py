@@ -5,6 +5,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import re
 import time
 import sys
 from dataclasses import dataclass
@@ -106,8 +107,8 @@ FINAL_RESULT:
 +1: The overall task is successfully completed.
 -1: The task fails due to incorrect reasoning, tool misuse, or unresolved errors.
 
-Return STRICT JSON ONLY.
-Do not include explanations, markdown, or any additional text.
+You MUST first output your detailed reasoning process, analyzing each assistant step one by one.
+Then, at the very end, output a JSON object wrapped in ```json ... ``` code block.
 """
 
 
@@ -175,6 +176,7 @@ class JudgeConfig:
     api_key: str | None
     model: str
     temperature: float
+    top_p: float
     max_tokens: int
     timeout_s: int
     mode: str  # "blind" | "reference"
@@ -490,6 +492,7 @@ def annotate_file(
                     messages=messages,
                     n=1,
                     temperature=cfg.temperature,
+                    top_p=cfg.top_p,
                     max_tokens=cfg.max_tokens,
                     timeout_s=cfg.timeout_s,
                     api_key=cfg.api_key,
@@ -545,6 +548,7 @@ def annotate_file(
                 "mode": cfg.mode,
                 "judge_model": cfg.model,
                 "temperature": cfg.temperature,
+                "top_p": cfg.top_p,
                 "max_tokens": cfg.max_tokens,
                 "timeout_s": cfg.timeout_s,
                 "index_in_dataset": index_in_dataset,
@@ -679,8 +683,9 @@ def main() -> None:
         help="blind: do NOT provide ground_truth/reward_info to judge; reference: include them.",
     )
     parser.add_argument("--model", type=str, required=True, help="OpenAI-compatible model name.")
-    parser.add_argument("--temperature", type=float, default=0.3)
-    parser.add_argument("--max_tokens", type=int, default=30000)
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--top_p", type=float, default=1.0)
+    parser.add_argument("--max_tokens", type=int, default=32768)
     parser.add_argument("--timeout_s", type=int, default=300)
     parser.add_argument("--base_url", type=str, default="", help="OpenAI-compatible base URL (or read from env).")
     parser.add_argument("--api_key", type=str, default="", help="API key (or read from env).")
@@ -723,6 +728,7 @@ def main() -> None:
         api_key=api_key,
         model=args.model,
         temperature=float(args.temperature),
+        top_p=float(args.top_p),
         max_tokens=int(args.max_tokens),
         timeout_s=int(args.timeout_s),
         mode=args.mode,

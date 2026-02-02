@@ -141,6 +141,7 @@ def openai_chat_completions(
     messages: List[Dict[str, Any]],
     n: int = 1,
     temperature: float = 0.8,
+    top_p: float = 1.0,
     max_tokens: int = 1024,
     timeout_s: int = 60,
     api_key: Optional[str] = None,
@@ -170,6 +171,7 @@ def openai_chat_completions(
                     messages=messages,
                     n=1,
                     temperature=temperature,
+                    top_p=top_p,
                     max_tokens=max_tokens,
                     tools=tools,
                 )
