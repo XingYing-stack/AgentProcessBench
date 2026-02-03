@@ -216,7 +216,7 @@ After your reasoning, output the final JSON result wrapped in ```json ... ``` ma
 JSON schema:
 {
   "step_labels": {"<assistant_index>": -1|0|1, ...},
-  "final_label": -1|0|1,
+  "final_label": -1|1,
   "explanations": {
     "steps": {"<assistant_index>": "short reason for humans", ...},
     "final": "short reason for humans"
