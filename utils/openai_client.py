@@ -174,6 +174,14 @@ def openai_chat_completions(
                     top_p=top_p,
                     max_tokens=max_tokens,
                     tools=tools,
+                    # extra_body={
+                    #     "reasoning": {
+                    #         "effort": "medium"
+                    #         }
+                    #     },
+                    extra_body={
+                        "reasoning_effort": "medium"
+                    },
                 )
                 try:
                     resp = client.chat.completions.create(**kwargs, timeout=timeout_s)

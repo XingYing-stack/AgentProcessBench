@@ -107,8 +107,9 @@ FINAL_RESULT:
 +1: The overall task is successfully completed.
 -1: The task fails due to incorrect reasoning, tool misuse, or unresolved errors.
 
-Return STRICT JSON ONLY.
-Do not include explanations, markdown, or any additional text."""
+Output format:
+You MUST first provide your reasoning process, analyzing each assistant step one by one.
+Then, at the very end, output a JSON object wrapped in ```json ... ``` markdown code block as your judgement results."""
 
 
 REFERENCE_MODE_JUDGE_RUBRIC = """You are a strict but fair trajectory annotator for tool-use agents.
@@ -209,7 +210,10 @@ def _build_judge_input(
         used_judge_rubric = JUDGE_RUBRIC
     user_instructions = """Label every index in assistant_message_indices.
 
-Output JSON schema:
+First, analyze each assistant message step by step.
+After your reasoning, output the final JSON result wrapped in ```json ... ``` markdown code block.
+
+JSON schema:
 {
   "step_labels": {"<assistant_index>": -1|0|1, ...},
   "final_label": -1|0|1,
@@ -233,6 +237,21 @@ Rules:
 
 def _extract_json_object(text: str) -> dict[str, Any]:
     text = text.strip()
+    
+    # First, try to extract JSON from ```json ... ``` markdown code block
+    json_block_pattern = re.compile(r"```json\s*([\s\S]*?)\s*```", re.IGNORECASE)
+    matches = json_block_pattern.findall(text)
+    if matches:
+        # Use the last match (in case there are multiple code blocks)
+        json_str = matches[-1].strip()
+        try:
+            obj = json.loads(json_str)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            pass
+    
+    # Fallback: try to parse the whole text as JSON
     try:
         obj = json.loads(text)
         if isinstance(obj, dict):
@@ -240,10 +259,28 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         pass
 
-    start = text.find("{")
+    # Fallback: find the last JSON object in the text
+    # Use rfind to locate the last '{' to handle reasoning text before JSON
     end = text.rfind("}")
-    if start < 0 or end < 0 or end <= start:
+    if end < 0:
         raise ValueError("LLM output is not JSON")
+    
+    # Find the matching '{' for this '}'
+    # We need to find the correct opening brace by counting braces
+    brace_count = 0
+    start = -1
+    for i in range(end, -1, -1):
+        if text[i] == '}':
+            brace_count += 1
+        elif text[i] == '{':
+            brace_count -= 1
+            if brace_count == 0:
+                start = i
+                break
+    
+    if start < 0:
+        raise ValueError("LLM output is not JSON")
+    
     obj = json.loads(text[start : end + 1])
     if not isinstance(obj, dict):
         raise ValueError("LLM output JSON is not an object")
@@ -707,7 +744,7 @@ def main() -> None:
         raise FileNotFoundError(str(input_path))
 
     dataset = args.dataset.strip() or input_path.stem
-    annotator = args.model.strip()
+    annotator = args.model.strip().split("/")[-1]
     username = args.model.strip()
 
     base_url = args.base_url.strip() or _env_first(["OPENAI_BASE_URL", "LLM_BASE_URL", "base_url", "BASE_URL"])
