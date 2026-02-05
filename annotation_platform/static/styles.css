@@ -2,9 +2,12 @@
   --bg: #f6f8ff;
   --panel: #ffffff;
   --card: #ffffff;
-  --text: #0f172a;
-  --muted: #475569;
-  --border: #e2e8f0;
+  --text: #0b1223;
+  --muted: #526074;
+  --border: rgba(148, 163, 184, 0.35);
+  --ring: rgba(37, 99, 235, 0.25);
+  --shadowSm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadowMd: 0 14px 40px rgba(15, 23, 42, 0.14);
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
     "Segoe UI Emoji";
@@ -21,7 +24,11 @@
 body {
   margin: 0;
   font-family: var(--sans);
-  background: radial-gradient(1200px 800px at 20% 0%, #ffffff 0%, var(--bg) 60%);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background:
+    radial-gradient(900px 520px at 18% -10%, rgba(37, 99, 235, 0.12) 0%, rgba(37, 99, 235, 0.00) 55%),
+    radial-gradient(1200px 800px at 20% 0%, #ffffff 0%, var(--bg) 60%);
   color: var(--text);
   height: 100vh;
   overflow: hidden;
@@ -50,8 +57,8 @@ body {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.25);
-  padding: 16px;
+  box-shadow: var(--shadowMd);
+  padding: 18px;
 }
 
 .modalTitle {
@@ -82,6 +89,7 @@ body {
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(10px);
   padding: 10px 14px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
 }
 
 .row {
@@ -98,6 +106,12 @@ body {
 .brand {
   font-weight: 700;
   letter-spacing: 0.2px;
+}
+
+.brandSub {
+  font-weight: 600;
+  margin-left: 8px;
+  font-size: 12px;
 }
 
 .spacer {
@@ -124,6 +138,15 @@ textarea {
   border-radius: 10px;
   padding: 8px 10px;
   outline: none;
+  box-shadow: var(--shadowSm);
+  transition: box-shadow 140ms ease, border-color 140ms ease;
+}
+
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 0 0 3px var(--ring), var(--shadowSm);
 }
 
 textarea {
@@ -139,20 +162,35 @@ textarea {
   border-radius: 10px;
   padding: 8px 12px;
   cursor: pointer;
+  box-shadow: var(--shadowSm);
+  transition: transform 80ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
 .btn:hover {
-  border-color: #3a4a7e;
+  border-color: rgba(37, 99, 235, 0.45);
+  transform: translateY(-0.5px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.btn:active {
+  transform: translateY(0px);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring), 0 10px 18px rgba(15, 23, 42, 0.08);
+  border-color: rgba(37, 99, 235, 0.55);
 }
 
 .btnPrimary {
-  background: rgba(37, 99, 235, 0.08);
-  border-color: rgba(37, 99, 235, 0.35);
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.95) 0%, rgba(29, 78, 216, 0.95) 100%);
+  border-color: rgba(29, 78, 216, 0.6);
+  color: #ffffff;
 }
 
 .btnWarn {
-  background: rgba(202, 138, 4, 0.08);
-  border-color: rgba(202, 138, 4, 0.35);
+  background: rgba(202, 138, 4, 0.10);
+  border-color: rgba(202, 138, 4, 0.40);
 }
 
 .layout {
@@ -179,6 +217,7 @@ textarea {
   padding: 12px;
   margin-bottom: 12px;
   position: relative;
+  box-shadow: var(--shadowSm);
 }
 
 .cardTitle {
@@ -221,6 +260,22 @@ textarea {
   cursor: pointer;
   font-size: 12px;
   transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  box-shadow: var(--shadowSm);
+}
+
+.pill:hover {
+  transform: translateY(-0.5px);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.pill:active {
+  transform: translateY(0px);
+}
+
+.pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring), var(--shadowSm);
+  border-color: rgba(37, 99, 235, 0.55);
 }
 
 .pill[data-active="true"] {
@@ -294,6 +349,7 @@ textarea {
   padding: 10px;
   scroll-margin-top: 110px;
   position: relative;
+  box-shadow: var(--shadowSm);
 }
 
 .msgHeader {
@@ -310,6 +366,7 @@ textarea {
   padding: 4px 10px;
   font-family: var(--mono);
   color: var(--muted);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .badge.role-assistant {
@@ -427,6 +484,22 @@ textarea {
   cursor: pointer;
   font-size: 12px;
   transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  box-shadow: var(--shadowSm);
+}
+
+.stepControls button:hover {
+  transform: translateY(-0.5px);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.stepControls button:active {
+  transform: translateY(0px);
+}
+
+.stepControls button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring), var(--shadowSm);
+  border-color: rgba(37, 99, 235, 0.55);
 }
 
 .stepControls button[data-active="true"] {
@@ -516,10 +589,25 @@ textarea {
   font-size: 12px;
   font-family: var(--mono);
   line-height: 1.2;
+  box-shadow: var(--shadowSm);
+  transition: transform 80ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease, color 140ms ease;
 }
 
 .copyBtn:hover {
   border-color: #3a4a7e;
+  color: var(--text);
+  transform: translateY(-0.5px);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
+}
+
+.copyBtn:active {
+  transform: translateY(0px);
+}
+
+.copyBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring), 0 10px 18px rgba(15, 23, 42, 0.08);
+  border-color: rgba(37, 99, 235, 0.55);
   color: var(--text);
 }
 

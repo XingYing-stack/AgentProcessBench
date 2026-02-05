@@ -1,31 +1,36 @@
 <!doctype html>
-<html lang="zh">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AgentProcessBench Annotation</title>
+    <title>AgentProcessBench · Annotation Studio</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div id="loginOverlay" class="overlay" data-open="false">
       <div class="modal">
-        <div class="modalTitle">开始标注</div>
-        <div class="modalText muted small">请输入用户名（会写入导出 JSONL，用于区分标注人员）。每次进入都会要求确认一次。</div>
+        <div class="modalTitle">Start annotating</div>
+        <div class="modalText muted small">
+          Enter your annotator name (it will be written to the exported JSONL to identify annotations). You will be asked
+          to confirm once per session.
+        </div>
         <div class="modalRow">
-          <input id="loginName" placeholder="例如: alice" />
+          <input id="loginName" placeholder="e.g., alice" />
           <button id="loginStartBtn" class="btn btnPrimary">Start</button>
         </div>
         <label class="modalText muted small">
           <input id="rememberAnnotator" type="checkbox" />
-          记住用户名（下次自动填充，但仍需点 Start 确认）
+          Remember my name (auto-fill next time; still requires clicking Start)
         </label>
-        <div class="modalText muted small mono">快捷键：j/k 或 ↑/↓ 切步；1/0/- 打分；Save & Next 保存并下一条</div>
+        <div class="modalText muted small mono">
+          Shortcuts: j/k or ↑/↓ to move between assistant steps; 1/0/- to label; Save & Next to save and advance.
+        </div>
       </div>
     </div>
 
     <header class="topbar">
       <div class="row">
-        <div class="brand">AgentProcessBench 标注</div>
+        <div class="brand">AgentProcessBench <span class="brandSub muted">Annotation Studio</span></div>
         <div class="spacer"></div>
         <div class="field">
           <label>Dataset</label>
@@ -33,21 +38,21 @@
         </div>
         <div class="field">
           <label>Annotator</label>
-          <input id="annotatorInput" placeholder="例如: alice" />
+          <input id="annotatorInput" placeholder="e.g., alice" />
         </div>
         <div class="field">
-          <label>进度</label>
+          <label>Progress</label>
           <div id="progressText" class="mono">-</div>
         </div>
       </div>
       <div class="row row2">
         <div class="field">
-          <label>跳转 Index</label>
+          <label>Jump To</label>
           <input id="jumpIndex" class="mono" placeholder="0" />
           <button id="jumpBtn" class="btn">Go</button>
         </div>
         <div class="field">
-          <label>当前 Index</label>
+          <label>Current</label>
           <div id="currentIndex" class="mono">-</div>
         </div>
         <div class="spacer"></div>
@@ -60,34 +65,34 @@
     <main class="layout">
       <section class="panel left">
         <div class="card">
-          <div class="cardTitle">样本</div>
+          <div class="cardTitle">Sample</div>
           <div id="sampleMeta" class="mono small"></div>
         </div>
         <div class="card">
-          <div class="cardTitle">问题 / 任务</div>
+          <div class="cardTitle">Question / Task</div>
           <div id="question" class="pre"></div>
           <div id="taskDescription" class="pre muted"></div>
         </div>
         <details class="card" id="toolsPanel" open>
-          <summary class="cardTitle">Tools 文档</summary>
+          <summary class="cardTitle">Tool Docs</summary>
           <div class="field toolsFilterRow">
-            <label>过滤</label>
-            <input id="toolsFilter" class="mono" placeholder="按工具名/描述筛选" />
+            <label>Filter</label>
+            <input id="toolsFilter" class="mono" placeholder="Filter by tool name / description" />
           </div>
           <div id="toolsDocs" class="toolsDocs"></div>
         </details>
         <div class="card">
-          <div class="cardTitle">最终结果标注</div>
+          <div class="cardTitle">Final Outcome</div>
           <div class="labelRow">
-            <button class="pill" data-final="1">+ 正确</button>
-            <button class="pill" data-final="0">0 不确定</button>
-            <button class="pill" data-final="-1">- 错误</button>
+            <button class="pill" data-final="1">+1 Correct</button>
+            <button class="pill" data-final="0">0 Uncertain</button>
+            <button class="pill" data-final="-1">-1 Incorrect</button>
           </div>
           <div id="rewardHint" class="small muted"></div>
         </div>
         <div class="card">
-          <div class="cardTitle">备注</div>
-          <textarea id="comment" rows="6" placeholder="可选：为何正确/错误，或标注注意事项"></textarea>
+          <div class="cardTitle">Notes</div>
+          <textarea id="comment" rows="6" placeholder="Optional: why correct/incorrect, edge cases, or annotation notes"></textarea>
         </div>
         <details class="card">
           <summary class="cardTitle">Ground Truth / Reward Info</summary>
@@ -98,7 +103,7 @@
 
       <section class="panel right">
         <div class="card">
-          <div class="cardTitle">Messages（逐步标注 assistant）</div>
+          <div class="cardTitle">Messages (step-level assistant labels)</div>
           <div id="stepsNav" class="stepsNav"></div>
           <div id="messages"></div>
         </div>

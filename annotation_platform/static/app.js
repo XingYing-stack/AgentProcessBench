@@ -439,13 +439,13 @@ function renderToolsDocs() {
   root.innerHTML = "";
 
   if (!state.item) {
-    root.textContent = "未加载样本";
+    root.textContent = "No sample loaded.";
     return;
   }
 
   const tools = state.item.tools;
   if (!Array.isArray(tools) || tools.length === 0) {
-    root.textContent = "该样本未提供 tools 字段。";
+    root.textContent = "This sample does not include a `tools` field.";
     return;
   }
 
@@ -453,7 +453,7 @@ function renderToolsDocs() {
   const filtered = normalized.filter((t) => toolMatchesFilter(t, state.toolsFilter));
 
   if (filtered.length === 0) {
-    root.textContent = "无匹配工具（可清空过滤条件）。";
+    root.textContent = "No matching tools (try clearing the filter).";
     return;
   }
 
@@ -621,7 +621,7 @@ function renderMessages() {
 
       const summary = document.createElement("summary");
       summary.className = "llmRefsSummary mono small muted";
-      summary.textContent = `LLM Annotations for Reference（${order.length} models）`;
+      summary.textContent = `LLM Reference Annotations (${order.length} models)`;
       summary.addEventListener("click", (e) => {
         e.stopPropagation();
       });
@@ -798,7 +798,7 @@ function setItem(payload) {
     $("rewardHint").textContent = "";
     $("rewardHint").style.color = "";
   } else {
-    $("rewardHint").textContent = `模型/规则 reward_hint: ${String(rh)}（仅供参考）`;
+    $("rewardHint").textContent = `Reward hint (model/rule): ${String(rh)} (reference only)`;
     if (typeof rh === "number") {
       $("rewardHint").style.color = rh > 0 ? "var(--green)" : rh < 0 ? "var(--red)" : "var(--amber)";
     } else {
@@ -819,7 +819,7 @@ async function refreshProgress() {
     return;
   }
   const p = await apiGet(`/api/progress?dataset=${encodeURIComponent(state.dataset)}&annotator=${encodeURIComponent(state.annotator)}`);
-  setStatus(`${p.done} done, ${p.skipped} skipped / ${p.total}`);
+  setStatus(`${p.done} done · ${p.skipped} skipped · ${p.total} total`);
 }
 
 async function loadDatasets() {
@@ -852,7 +852,7 @@ async function loadNext() {
     `/api/next?dataset=${encodeURIComponent(state.dataset)}&annotator=${encodeURIComponent(state.annotator)}`
   );
   if (payload.done) {
-    alert("该 dataset 已标注完成（或无可用样本）。");
+    alert("This dataset is complete (or no samples are available).");
     return;
   }
   setItem(payload);
@@ -896,7 +896,7 @@ function validateDoneOrAlert() {
   if (missing.length > 0) {
     const head = missing.slice(0, 12).map((x) => `a@${x}`).join(", ");
     const more = missing.length > 12 ? ` …(+${missing.length - 12})` : "";
-    alert(`还有 assistant 步未标注：${head}${more}`);
+    alert(`Unlabeled assistant steps: ${head}${more}`);
     const first = missing[0];
     state.focusedAssistantIdx = first;
     renderStepsNav();
@@ -906,7 +906,7 @@ function validateDoneOrAlert() {
     return false;
   }
   if (!state.finalLabelTouched || !isValidLabel(state.finalLabel)) {
-    alert("请先完成“最终结果标注”（+ / 0 / -）再保存。");
+    alert('Please label the "Final Outcome" (+ / 0 / -) before saving.');
     return false;
   }
   return true;
@@ -914,7 +914,7 @@ function validateDoneOrAlert() {
 
 async function save(status) {
   if (!state.item) {
-    alert("未加载样本");
+    alert("No sample loaded.");
     return false;
   }
   if (status !== "skipped" && !validateDoneOrAlert()) return false;
@@ -990,7 +990,7 @@ function initEvents() {
   });
 
   $("skipBtn").addEventListener("click", async () => {
-    if (!confirm("确认跳过该样本？")) return;
+    if (!confirm("Skip this sample?")) return;
     await save("skipped");
     await loadNext();
   });
